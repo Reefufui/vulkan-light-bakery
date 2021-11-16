@@ -1,0 +1,7 @@
+[requires]
+vulkan-headers/1.2.170.0
+glfw/3.3.3
+glm/0.9.9.8
+
+[generators]
+cmake
