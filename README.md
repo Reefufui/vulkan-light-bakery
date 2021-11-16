@@ -1,4 +1,4 @@
-Vulkan Light Bakary
+Vulkan Light Bakery
 ================
 MSU Graphics Group Student's Diploma Project
 
@@ -15,8 +15,8 @@ The goal of the project is to implement and improve Activision's UberBake Light 
 
  2. Build the project using the standard CMake building process.
 ```
-git clone git@github.com:Reefufui/vulkan-light-bakary.git --recurse-submodules
-cd vulkan-light-bakary
+git clone git@github.com:Reefufui/vulkan-light-bakery.git --recurse-submodules
+cd vulkan-light-bakery
 mkdir build
 cd build
 conan install ..
