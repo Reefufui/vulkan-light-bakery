@@ -1,11 +1,13 @@
 # .gitignore taken from https://github.com/lukedan/ReSTIR-Vulkan/blob/master/.gitignore
 
+*.zip
 *.orig
 *.filters
 *.sln
 *.vcxproj
 *.xcodeproj
 build
+assets
 
 .vs/
 out/
