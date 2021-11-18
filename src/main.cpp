@@ -1,9 +1,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.hpp>
-#include <glm/mat4x4.hpp>
-#include <imgui.h>
-#include <tiny_gltf.h>
 
 #include <iostream>
 #include <sstream>
