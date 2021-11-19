@@ -208,14 +208,18 @@ void Raytracer::createSwapchainResourses()
 void Raytracer::createBLAS()
 {
     // NOTE: hello triangle
-    const float vertices[9] = {
-        0.25f, 0.25f, 0.0f,
-        0.75f, 0.25f, 0.0f,
-        0.50f, 0.75f, 0.0f
+    struct Vertex {
+        float pos[3];
     };
+    std::vector<Vertex> vertices = {
+        { {  1.0f,  1.0f, 0.0f } },
+        { { -1.0f,  1.0f, 0.0f } },
+        { {  0.0f, -1.0f, 0.0f } }
+    };
+    std::vector<uint32_t> indices = { 0, 1, 2 };
+    uint32_t indexCount = static_cast<uint32_t>(indices.size());
 
-    const uint32_t indices[3] = { 0, 1, 2 };
-
+    // TODO: create buffer wrapper
 }
 
 void Raytracer::draw()
