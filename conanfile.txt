@@ -8,3 +8,8 @@ imgui/1.85
 
 [generators]
 cmake
+
+[options]
+vulkan-loader:shared=True
+glfw:shared=True
+imgui:shared=True
