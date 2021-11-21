@@ -4,7 +4,6 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_COMPILER g++)
 
-add_definitions(-DVK_ENABLE_BETA_EXTENSIONS)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fmax-errors=1")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)

@@ -5,6 +5,9 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#define VULKAN_HPP_STORAGE_SHARED_EXPORT
+#define VULKAN_HPP_STORAGE_SHARED
 #include <vulkan/vulkan.hpp>
 
 #include <iostream>
@@ -24,6 +27,8 @@ class Application
         vk::Device         m_device;
         vk::CommandPool    m_commandPool;
 
+        vk::DynamicLoader  m_dl;
+
         void pushPresentationExtensions();
         void initDebugReportCallback();
 
@@ -31,10 +36,7 @@ class Application
         uint32_t getQueueFamilyIndex();
 
         void createInstance();
-        void createDevices();
-        void findPhysicalDevice();
-        void createLogicalDevice();
-
+        void createDevice(size_t a_physicalDeviceIdx = 0);
         void createCommandPool();
 
     private:

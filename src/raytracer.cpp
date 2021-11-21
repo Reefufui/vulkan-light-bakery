@@ -24,7 +24,7 @@ vk::UniqueSurfaceKHR Raytracer::createSurface()
     {
         throw std::runtime_error("failed to create window surface");
     }
-    vk::ObjectDestroy<vk::Instance, vk::DispatchLoaderStatic> surfaceDeleter(m_instance);
+    vk::ObjectDestroy<vk::Instance, vk::DispatchLoaderDynamic> surfaceDeleter(m_instance);
 
     auto surface = vk::UniqueSurfaceKHR(tmpSurface, surfaceDeleter);
 
@@ -148,7 +148,7 @@ vk::UniqueSwapchainKHR Raytracer::createSwapchain()
     createInfo.clipped          = VK_TRUE;
     createInfo.oldSwapchain     = nullptr;
 
-    vk::ObjectDestroy<vk::Device, vk::DispatchLoaderStatic> swapchainDeleter(m_device);
+    vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> swapchainDeleter(m_device);
     vk::SwapchainKHR swapChain{};
     if (m_device.createSwapchainKHR(&createInfo, nullptr, &swapChain) != vk::Result::eSuccess)
     {
@@ -175,7 +175,7 @@ void Raytracer::createSwapchainResourses()
     }
 
     m_swapchainImageViews.resize(imageCount);
-    vk::ObjectDestroy<vk::Device, vk::DispatchLoaderStatic> imageViewDeleter(m_device);
+    vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> imageViewDeleter(m_device);
 
     vk::ImageViewCreateInfo createInfo{};
     createInfo.viewType     = vk::ImageViewType::e2D;
@@ -205,9 +205,12 @@ void Raytracer::createSwapchainResourses()
     }
 }
 
+// TODO: abstract this AS classes
 void Raytracer::createBLAS()
 {
-    // NOTE: hello triangle
+    /////////////////////////
+    // Hello triangle
+    /////////////////////////
     struct Vertex {
         float pos[3];
     };
@@ -216,10 +219,69 @@ void Raytracer::createBLAS()
         { { -1.0f,  1.0f, 0.0f } },
         { {  0.0f, -1.0f, 0.0f } }
     };
+    size_t vBufferSize = sizeof(Vertex) * vertices.size();
     std::vector<uint32_t> indices = { 0, 1, 2 };
     uint32_t indexCount = static_cast<uint32_t>(indices.size());
+    size_t iBufferSize = sizeof(uint32_t) * indices.size();
 
-    // TODO: create buffer wrapper
+    vk::BufferCreateInfo bufferInfo{};
+    bufferInfo.usage = vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+    bufferInfo.size  = vBufferSize;
+    vk::Buffer vBuffer = m_device.createBuffer(bufferInfo);
+    bufferInfo.size  = iBufferSize;
+    vk::Buffer iBuffer = m_device.createBuffer(bufferInfo);
+
+    // NOTE: it is ok not to stage the vertex data to the GPU memory for now
+    vk::PhysicalDeviceMemoryProperties memoryProperties = m_physicalDevice.getMemoryProperties();
+    vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+    auto getMemoryForBuffer = [&](vk::Buffer& a_buffer)
+    {
+        vk::MemoryRequirements memReq = m_device.getBufferMemoryRequirements(a_buffer);
+        vk::MemoryAllocateInfo allocInfo{};
+        allocInfo.allocationSize  = memReq.size;
+        vk::MemoryAllocateFlagsInfo allocExt{};
+        allocExt.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+        allocInfo.pNext = &allocExt;
+        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+        {
+            if ((memReq.memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties)
+                        == properties))
+            {
+                allocInfo.memoryTypeIndex = i;
+                break;
+            }
+        }
+
+        return m_device.allocateMemory(allocInfo);
+    };
+
+    vk::DeviceMemory vBufferMemory = getMemoryForBuffer(vBuffer);
+    vk::DeviceMemory iBufferMemory = getMemoryForBuffer(iBuffer);
+
+    uint8_t *pData = static_cast<uint8_t *>(m_device.mapMemory(vBufferMemory, 0, vBufferSize));
+    memcpy(pData, vertices.data(), vBufferSize);
+    m_device.unmapMemory(vBufferMemory);
+    m_device.bindBufferMemory(vBuffer, vBufferMemory, 0);
+
+    pData = static_cast<uint8_t *>(m_device.mapMemory(iBufferMemory, 0, iBufferSize));
+    memcpy(pData, indices.data(), iBufferSize);
+    m_device.unmapMemory(iBufferMemory);
+    m_device.bindBufferMemory(iBuffer, iBufferMemory, 0);
+
+    vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
+    vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
+
+    // NOTE: should allocate memory with proper flags
+    vertexBufferDeviceAddress.deviceAddress = m_device.getBufferAddressKHR({vBuffer});
+    indexBufferDeviceAddress.deviceAddress  = m_device.getBufferAddressKHR({iBuffer});
+    /////////////////////////
+    // Hello triangle
+    /////////////////////////
+
+    m_device.freeMemory(vBufferMemory);
+    m_device.freeMemory(iBufferMemory);
+    m_device.destroyBuffer(vBuffer);
+    m_device.destroyBuffer(iBuffer);
 }
 
 void Raytracer::draw()
@@ -248,7 +310,7 @@ Raytracer::Raytracer()
     glfwInit();
     pushPresentationExtensions();
     createInstance();
-    createDevices();
+    createDevice();
     createCommandPool();
 
     m_window  = createWindow();

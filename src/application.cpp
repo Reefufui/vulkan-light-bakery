@@ -123,13 +123,7 @@ void Application::initDebugReportCallback()
             vk::DebugUtilsMessengerCreateInfoEXT({}, severityFlags, messageTypeFlags, &debugMessageFunc));
 }
 
-void Application::createDevices()
-{
-    findPhysicalDevice();
-    createLogicalDevice();
-}
-
-void Application::findPhysicalDevice()
+void Application::createDevice(size_t a_physicalDeviceIdx)
 {
     assert(m_instance);
 
@@ -145,19 +139,36 @@ void Application::findPhysicalDevice()
         throw std::runtime_error("failed to fetch devices");
     }
 
-    vk::PhysicalDeviceProperties props{};
-    vk::PhysicalDeviceFeatures   features{};
+    assert(a_physicalDeviceIdx < deviceCount);
+    m_physicalDevice = devices[a_physicalDeviceIdx];
 
-    for (auto& device : devices)
+    // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/enabling_buffer_device_address.html
+    vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeature{};
+    vk::PhysicalDeviceFeatures2 deviceFeatures{};
+    deviceFeatures.pNext = &bufferDeviceAddressFeature;
+    m_physicalDevice.getFeatures2(&deviceFeatures);
+    if (bufferDeviceAddressFeature.bufferDeviceAddress != VK_TRUE)
     {
-        device.getProperties(&props);
-        device.getFeatures(&features);
+        throw std::runtime_error("buffer device address feature is not supported");
     }
 
-    if (!m_physicalDevice)
-    {
-        m_physicalDevice = devices[0];
-    }
+    vk::DeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.queueFamilyIndex = getQueueFamilyIndex();
+    queueCreateInfo.queueCount       = 1;
+    float queuePriorities            = 1.f;
+    queueCreateInfo.pQueuePriorities = &queuePriorities;
+
+    vk::DeviceCreateInfo deviceCreateInfo{};
+    deviceCreateInfo.pNext                = &deviceFeatures;
+    deviceCreateInfo.enabledLayerCount    = uint32_t(m_deviceLayers.size());
+    deviceCreateInfo.ppEnabledLayerNames  = m_deviceLayers.data();
+    deviceCreateInfo.pQueueCreateInfos    = &queueCreateInfo;
+    deviceCreateInfo.queueCreateInfoCount = 1;
+
+    deviceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(m_deviceExtensions.size());
+    deviceCreateInfo.ppEnabledExtensionNames = m_deviceExtensions.data();
+
+    m_device = m_physicalDevice.createDevice(deviceCreateInfo, nullptr);
 }
 
 uint32_t Application::getQueueFamilyIndex()
@@ -185,28 +196,6 @@ uint32_t Application::getQueueFamilyIndex()
     }
 
     return index;
-}
-
-void Application::createLogicalDevice()
-{
-    vk::DeviceQueueCreateInfo queueCreateInfo{};
-    queueCreateInfo.queueFamilyIndex = getQueueFamilyIndex();
-    queueCreateInfo.queueCount       = 1;
-    float queuePriorities            = 1.f;
-    queueCreateInfo.pQueuePriorities = &queuePriorities;
-
-    vk::PhysicalDeviceFeatures deviceFeatures{};
-    vk::DeviceCreateInfo deviceCreateInfo{};
-    deviceCreateInfo.enabledLayerCount = uint32_t(m_deviceLayers.size());
-    deviceCreateInfo.ppEnabledLayerNames  = m_deviceLayers.data();
-    deviceCreateInfo.pQueueCreateInfos    = &queueCreateInfo;
-    deviceCreateInfo.queueCreateInfoCount = 1;
-    deviceCreateInfo.pEnabledFeatures     = &deviceFeatures;
-
-    deviceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(m_deviceExtensions.size());
-    deviceCreateInfo.ppEnabledExtensionNames = m_deviceExtensions.data();
-
-    m_device = m_physicalDevice.createDevice(deviceCreateInfo, nullptr);
 }
 
 void Application::createCommandPool()
@@ -298,16 +287,23 @@ Application::~Application()
     m_instance.destroy();
 }
 
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+
 void Application::createInstance()
 {
+    // https://github.com/KhronosGroup/Vulkan-Hpp#extensions--per-device-function-pointers
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = m_dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+
     checkValidationLayers(m_instanceLayers);
     checkExtensions(m_instanceExtensions);
-
     vk::ApplicationInfo applicationInfo("Vulkan", 1, "Asama", 1, VK_API_VERSION_1_1);
     vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(), &applicationInfo,
             uint32_t(m_instanceLayers.size()), m_instanceLayers.data(),
             uint32_t(m_instanceExtensions.size()), m_instanceExtensions.data());
     m_instance = vk::createInstance(instanceCreateInfo);
+
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
 
 #ifdef DEBUG
     initDebugReportCallback();
