@@ -23,6 +23,7 @@ include_directories(src)
 add_executable(vklb
     src/main.cpp
     src/application.cpp
+    src/renderer.cpp
     src/raytracer.cpp
 )
 

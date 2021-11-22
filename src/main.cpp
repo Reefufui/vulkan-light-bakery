@@ -7,7 +7,7 @@ int main(int, char**)
 {
     try
     {
-        Raytracer app{};
+        vlb::Raytracer app{};
         app.render();
     }
     catch(const vk::SystemError& error)
