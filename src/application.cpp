@@ -142,16 +142,6 @@ void Application::createDevice(size_t a_physicalDeviceIdx)
     assert(a_physicalDeviceIdx < deviceCount);
     m_physicalDevice = devices[a_physicalDeviceIdx];
 
-    // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/enabling_buffer_device_address.html
-    vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeature{};
-    vk::PhysicalDeviceFeatures2 deviceFeatures{};
-    deviceFeatures.pNext = &bufferDeviceAddressFeature;
-    m_physicalDevice.getFeatures2(&deviceFeatures);
-    if (bufferDeviceAddressFeature.bufferDeviceAddress != VK_TRUE)
-    {
-        throw std::runtime_error("buffer device address feature is not supported");
-    }
-
     vk::DeviceQueueCreateInfo queueCreateInfo{};
     queueCreateInfo.queueFamilyIndex = getQueueFamilyIndex();
     queueCreateInfo.queueCount       = 1;
@@ -159,16 +149,26 @@ void Application::createDevice(size_t a_physicalDeviceIdx)
     queueCreateInfo.pQueuePriorities = &queuePriorities;
 
     vk::DeviceCreateInfo deviceCreateInfo{};
-    deviceCreateInfo.pNext                = &deviceFeatures;
-    deviceCreateInfo.enabledLayerCount    = uint32_t(m_deviceLayers.size());
-    deviceCreateInfo.ppEnabledLayerNames  = m_deviceLayers.data();
     deviceCreateInfo.pQueueCreateInfos    = &queueCreateInfo;
     deviceCreateInfo.queueCreateInfoCount = 1;
-
     deviceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(m_deviceExtensions.size());
     deviceCreateInfo.ppEnabledExtensionNames = m_deviceExtensions.data();
 
-    m_device = m_physicalDevice.createDevice(deviceCreateInfo, nullptr);
+    auto c = vk::StructureChain<
+        vk::DeviceCreateInfo,
+        vk::PhysicalDeviceFeatures2,
+        vk::PhysicalDeviceBufferDeviceAddressFeatures,
+        vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>{
+            deviceCreateInfo,
+            vk::PhysicalDeviceFeatures2(),
+            vk::PhysicalDeviceBufferDeviceAddressFeatures(),
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR()
+        };
+
+    m_physicalDevice.getFeatures2(&c.get<vk::PhysicalDeviceFeatures2>());
+    m_device = m_physicalDevice.createDevice(c.get<vk::DeviceCreateInfo>());
+
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);
 }
 
 uint32_t Application::getQueueFamilyIndex()

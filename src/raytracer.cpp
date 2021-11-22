@@ -274,6 +274,32 @@ void Raytracer::createBLAS()
     // NOTE: should allocate memory with proper flags
     vertexBufferDeviceAddress.deviceAddress = m_device.getBufferAddressKHR({vBuffer});
     indexBufferDeviceAddress.deviceAddress  = m_device.getBufferAddressKHR({iBuffer});
+
+    vk::AccelerationStructureGeometryKHR accelerationStructureGeometry{};
+    accelerationStructureGeometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
+    accelerationStructureGeometry.geometryType = vk::GeometryTypeKHR::eTriangles;
+    accelerationStructureGeometry.geometry.triangles.vertexFormat = vk::Format::eR32G32B32Sfloat;
+    accelerationStructureGeometry.geometry.triangles.vertexData   = vertexBufferDeviceAddress;
+    accelerationStructureGeometry.geometry.triangles.maxVertex    = 3;
+    accelerationStructureGeometry.geometry.triangles.vertexStride = sizeof(Vertex);
+    accelerationStructureGeometry.geometry.triangles.indexType    = vk::IndexType::eUint32;
+    accelerationStructureGeometry.geometry.triangles.indexData    = indexBufferDeviceAddress;
+    //accelerationStructureGeometry.geometry.triangles.transformData = transformBufferDeviceAddress;
+
+    vk::AccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
+    accelerationStructureBuildGeometryInfo.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
+    accelerationStructureBuildGeometryInfo.flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+    accelerationStructureBuildGeometryInfo.geometryCount = 1;
+    accelerationStructureBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+
+    const uint32_t numTriangles = 1;
+    vk::AccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+    m_device.getAccelerationStructureBuildSizesKHR(
+            vk::AccelerationStructureBuildTypeKHR::eDevice,
+            &accelerationStructureBuildGeometryInfo,
+            &numTriangles,
+            &accelerationStructureBuildSizesInfo);
+
     /////////////////////////
     // Hello triangle
     /////////////////////////
