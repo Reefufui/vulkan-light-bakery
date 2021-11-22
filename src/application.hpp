@@ -18,44 +18,48 @@
 
 #define DEBUG
 
-class Application
-{
-    protected:
+namespace vlb {
 
-        vk::Instance       m_instance;
-        vk::PhysicalDevice m_physicalDevice;
-        vk::Device         m_device;
-        vk::CommandPool    m_commandPool;
+    class Application
+    {
+        protected:
 
-        vk::DynamicLoader  m_dl;
+            vk::Instance       m_instance;
+            vk::PhysicalDevice m_physicalDevice;
+            vk::Device         m_device;
+            vk::CommandPool    m_commandPool;
 
-        void pushPresentationExtensions();
-        void initDebugReportCallback();
+            vk::DynamicLoader  m_dl;
 
-        virtual vk::QueueFlagBits getQueueFlag() = 0;
-        uint32_t getQueueFamilyIndex();
+            void pushPresentationExtensions();
+            void initDebugReportCallback();
 
-        void createInstance();
-        void createDevice(size_t a_physicalDeviceIdx = 0);
-        void createCommandPool();
+            virtual vk::QueueFlagBits getQueueFlag() = 0;
+            uint32_t getQueueFamilyIndex();
 
-    private:
+            void createInstance();
+            void createDevice(size_t a_physicalDeviceIdx = 0);
+            void createCommandPool();
 
-        vk::DebugUtilsMessengerEXT m_debugMessenger;
-        std::vector<const char*> m_instanceLayers;
-        std::vector<const char*> m_instanceExtensions;
-        std::vector<const char*> m_deviceLayers;
-        std::vector<const char*> m_deviceExtensions;
+        private:
 
-        void checkValidationLayers(const std::vector<const char*>& a_layersToCheck);
-        void checkExtensions(const std::vector<const char*>& a_extensionsToCheck);
+            vk::DebugUtilsMessengerEXT m_debugMessenger;
+            std::vector<const char*> m_instanceLayers;
+            std::vector<const char*> m_instanceExtensions;
+            std::vector<const char*> m_deviceLayers;
+            std::vector<const char*> m_deviceExtensions;
 
-    public:
+            void checkValidationLayers(const std::vector<const char*>& a_layersToCheck);
+            void checkExtensions(const std::vector<const char*>& a_extensionsToCheck);
 
-        Application();
-        Application(const Application& other) = delete;
-        ~Application();
-};
+        public:
+
+            Application();
+            Application(const Application& other) = delete;
+            ~Application();
+    };
+
+}
 
 #endif // ifndef APPLICATION_HPP
 
