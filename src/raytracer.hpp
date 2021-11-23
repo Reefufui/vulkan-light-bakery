@@ -4,6 +4,7 @@
 #define RAYTRACER_HPP
 
 #include "renderer.hpp"
+#include "acceleration_structure.hpp"
 
 namespace vlb {
 
@@ -11,13 +12,23 @@ namespace vlb {
     {
         private:
             void createBLAS();
+            void createTLAS();
+            void createStorageImage();
+            void createUniformBuffer();
+            void createRayTracingPipeline();
+            void createShaderBindingTable();
+            void createDescriptorSets();
+            void buildCommandBuffers();
             void draw();
 
         public:
             Raytracer();
             ~Raytracer();
+
+            AccelerationStructure as{&m_device};
     };
 
 }
 
 #endif // RAYTRACER_HPP
+

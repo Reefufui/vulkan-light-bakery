@@ -18,10 +18,15 @@ namespace vlb {
             { { -1.0f,  1.0f, 0.0f } },
             { {  0.0f, -1.0f, 0.0f } }
         };
-        size_t vBufferSize = sizeof(Vertex) * vertices.size();
         std::vector<uint32_t> indices = { 0, 1, 2 };
-        uint32_t indexCount = static_cast<uint32_t>(indices.size());
+        std::vector<float> transformMatrix = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f
+        };
+        size_t vBufferSize = sizeof(Vertex)   * vertices.size();
         size_t iBufferSize = sizeof(uint32_t) * indices.size();
+        size_t tBufferSize = sizeof(float)    * transformMatrix.size();
 
         vk::BufferCreateInfo bufferInfo{};
         bufferInfo.usage = vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
@@ -29,6 +34,8 @@ namespace vlb {
         vk::Buffer vBuffer = m_device.createBuffer(bufferInfo);
         bufferInfo.size  = iBufferSize;
         vk::Buffer iBuffer = m_device.createBuffer(bufferInfo);
+        bufferInfo.size  = tBufferSize;
+        vk::Buffer tBuffer = m_device.createBuffer(bufferInfo);
 
         // NOTE: it is ok not to stage the vertex data to the GPU memory for now
         vk::PhysicalDeviceMemoryProperties memoryProperties = m_physicalDevice.getMemoryProperties();
@@ -56,6 +63,7 @@ namespace vlb {
 
         vk::DeviceMemory vBufferMemory = getMemoryForBuffer(vBuffer);
         vk::DeviceMemory iBufferMemory = getMemoryForBuffer(iBuffer);
+        vk::DeviceMemory tBufferMemory = getMemoryForBuffer(tBuffer);
 
         uint8_t *pData = static_cast<uint8_t *>(m_device.mapMemory(vBufferMemory, 0, vBufferSize));
         memcpy(pData, vertices.data(), vBufferSize);
@@ -67,23 +75,36 @@ namespace vlb {
         m_device.unmapMemory(iBufferMemory);
         m_device.bindBufferMemory(iBuffer, iBufferMemory, 0);
 
-        vk::DeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
-        vk::DeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
+        pData = static_cast<uint8_t *>(m_device.mapMemory(tBufferMemory, 0, tBufferSize));
+        memcpy(pData, transformMatrix.data(), tBufferSize);
+        m_device.unmapMemory(tBufferMemory);
+        m_device.bindBufferMemory(tBuffer, tBufferMemory, 0);
 
-        // NOTE: should allocate memory with proper flags
-        vertexBufferDeviceAddress.deviceAddress = m_device.getBufferAddressKHR({vBuffer});
-        indexBufferDeviceAddress.deviceAddress  = m_device.getBufferAddressKHR({iBuffer});
+        vk::DeviceOrHostAddressConstKHR vBufferDeviceAddress{};
+        vk::DeviceOrHostAddressConstKHR iBufferDeviceAddress{};
+        vk::DeviceOrHostAddressConstKHR tBufferDeviceAddress{};
+
+        vBufferDeviceAddress.deviceAddress = m_device.getBufferAddressKHR({vBuffer});
+        iBufferDeviceAddress.deviceAddress = m_device.getBufferAddressKHR({iBuffer});
+        tBufferDeviceAddress.deviceAddress = m_device.getBufferAddressKHR({tBuffer});
+
+        /////////////////////////
+        // Hello triangle
+        /////////////////////////
 
         vk::AccelerationStructureGeometryKHR accelerationStructureGeometry{};
         accelerationStructureGeometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
         accelerationStructureGeometry.geometryType = vk::GeometryTypeKHR::eTriangles;
+
         accelerationStructureGeometry.geometry.triangles.vertexFormat = vk::Format::eR32G32B32Sfloat;
-        accelerationStructureGeometry.geometry.triangles.vertexData   = vertexBufferDeviceAddress;
         accelerationStructureGeometry.geometry.triangles.maxVertex    = 3;
-        accelerationStructureGeometry.geometry.triangles.vertexStride = sizeof(Vertex);
+        accelerationStructureGeometry.geometry.triangles.vertexStride = sizeof(Vertex); // hardcoded for now
+
         accelerationStructureGeometry.geometry.triangles.indexType    = vk::IndexType::eUint32;
-        accelerationStructureGeometry.geometry.triangles.indexData    = indexBufferDeviceAddress;
-        //accelerationStructureGeometry.geometry.triangles.transformData = transformBufferDeviceAddress;
+
+        accelerationStructureGeometry.geometry.triangles.vertexData    = vBufferDeviceAddress;
+        accelerationStructureGeometry.geometry.triangles.indexData     = iBufferDeviceAddress;
+        accelerationStructureGeometry.geometry.triangles.transformData = tBufferDeviceAddress;
 
         vk::AccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
         accelerationStructureBuildGeometryInfo.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
@@ -99,18 +120,52 @@ namespace vlb {
                 &numTriangles,
                 &accelerationStructureBuildSizesInfo);
 
-        /////////////////////////
-        // Hello triangle
-        /////////////////////////
-
         m_device.freeMemory(vBufferMemory);
         m_device.freeMemory(iBufferMemory);
+        m_device.freeMemory(tBufferMemory);
         m_device.destroyBuffer(vBuffer);
         m_device.destroyBuffer(iBuffer);
+        m_device.destroyBuffer(tBuffer);
+    }
+
+    void Raytracer::createTLAS()
+    {
+        //TODO
+    }
+
+    void Raytracer::createStorageImage()
+    {
+        //TODO
+    }
+
+    void Raytracer::createUniformBuffer()
+    {
+        //TODO
+    }
+
+    void Raytracer::createRayTracingPipeline()
+    {
+        //TODO
+    }
+
+    void Raytracer::createShaderBindingTable()
+    {
+        //TODO
+    }
+
+    void Raytracer::createDescriptorSets()
+    {
+        //TODO
+    }
+
+    void Raytracer::buildCommandBuffers()
+    {
+        //TODO
     }
 
     void Raytracer::draw()
     {
+        //TODO
     }
 
     Raytracer::Raytracer()

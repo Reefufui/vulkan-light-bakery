@@ -18,7 +18,7 @@ namespace vlb {
                 }
             };
 
-        protected:
+        private:
 
             typedef std::unique_ptr<GLFWwindow, WindowDestroy> UniqueWindow;
 
@@ -34,8 +34,6 @@ namespace vlb {
 
             vk::Queue m_graphicsQueue;
             vk::Queue m_presentQueue;
-
-        private:
 
             UniqueWindow createWindow(const int& a_windowWidth = 480, const int& a_windowHeight = 480);
             vk::UniqueSurfaceKHR createSurface();
