@@ -6,6 +6,7 @@
 #include "renderer.hpp"
 //TODO: #include "acceleration_structure.hpp"
 //TODO: #include "scene.hpp"
+//TODO: #include "image.hpp"
 
 namespace vlb {
 
@@ -36,6 +37,14 @@ namespace vlb {
         vk::Buffer tBuffer;
     };
 
+    //TODO: should be part of image.hpp's class
+    struct Image
+    {
+        vk::Image        image;
+        vk::DeviceMemory memory;
+        vk::ImageView    imageView;
+    };
+
     class Raytracer : public Renderer
     {
         private:
@@ -56,6 +65,7 @@ namespace vlb {
             AccelerationStructure m_blas;
             AccelerationStructure m_tlas;
             Scene m_scene;
+            Image m_rayGenStorage;
     };
 
 }

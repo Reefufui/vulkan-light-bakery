@@ -21,14 +21,11 @@ namespace vlb {
             typedef std::unique_ptr<GLFWwindow, WindowDestroy> UniqueWindow;
 
             UniqueWindow         m_window;
-            uint32_t             m_windowWidth;
-            uint32_t             m_windowHeight;
 
             vk::UniqueSurfaceKHR             m_surface;
             vk::UniqueSwapchainKHR           m_swapchain;
             std::vector<vk::Image>           m_swapchainImages;
             std::vector<vk::UniqueImageView> m_swapchainImageViews;
-            vk::SurfaceFormatKHR             m_surfaceFormat{ vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear };
 
             UniqueWindow createWindow(const int& a_windowWidth = 480, const int& a_windowHeight = 480);
             vk::UniqueSurfaceKHR createSurface();
@@ -39,7 +36,10 @@ namespace vlb {
             virtual void draw() = 0;
 
         protected:
-            vk::Queue m_graphicsQueue;
+            vk::Queue            m_graphicsQueue;
+            vk::SurfaceFormatKHR m_surfaceFormat{ vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear };
+            uint32_t             m_windowWidth;
+            uint32_t             m_windowHeight;
 
         public:
 
