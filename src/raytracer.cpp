@@ -38,7 +38,6 @@ namespace vlb {
         m_scene.tBuffer = m_device.createBuffer(bufferInfo);
 
         // NOTE: it is ok not to stage the vertex data to the GPU memory for now
-        vk::PhysicalDeviceMemoryProperties memoryProperties = m_physicalDevice.getMemoryProperties();
         vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
         vk::MemoryAllocateFlagsInfo allocExt{};
         allocExt.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
@@ -49,9 +48,9 @@ namespace vlb {
             vk::MemoryAllocateInfo allocInfo{};
             allocInfo.allocationSize  = memReq.size;
             allocInfo.pNext = &allocExt;
-            for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+            for (uint32_t i = 0; i < this->physicalDeviceMemoryProperties.memoryTypeCount; ++i)
             {
-                if ((memReq.memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties)
+                if ((memReq.memoryTypeBits & (1 << i)) && ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & properties)
                             == properties))
                 {
                     allocInfo.memoryTypeIndex = i;
@@ -190,7 +189,6 @@ namespace vlb {
         bufferInfo.size  = sizeof(vk::AccelerationStructureInstanceKHR);
         instancesBuffer.buffer = m_device.createBuffer(bufferInfo);
 
-        vk::PhysicalDeviceMemoryProperties memoryProperties = m_physicalDevice.getMemoryProperties();
         vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
         vk::MemoryAllocateFlagsInfo allocExt{};
         allocExt.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
@@ -201,9 +199,9 @@ namespace vlb {
             vk::MemoryAllocateInfo allocInfo{};
             allocInfo.allocationSize  = memReq.size;
             allocInfo.pNext = &allocExt;
-            for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+            for (uint32_t i = 0; i < this->physicalDeviceMemoryProperties.memoryTypeCount; ++i)
             {
-                if ((memReq.memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties)
+                if ((memReq.memoryTypeBits & (1 << i)) && ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & properties)
                             == properties))
                 {
                     allocInfo.memoryTypeIndex = i;
@@ -295,7 +293,6 @@ namespace vlb {
     }
 
     // TODO: move this function somewhere else
-    // copied from https://github.com/nishidate-yuki/vulkan_raytracing_from_scratch/blob/master/code/vkutils.hpp
     void setImageLayout(
             vk::CommandBuffer cmdbuffer,
             vk::Image image,
@@ -306,7 +303,6 @@ namespace vlb {
             vk::PipelineStageFlags dstStageMask = vk::PipelineStageFlagBits::eAllCommands)
     {
         vk::ImageMemoryBarrier imageMemoryBarrier{};
-        // NOTE: i like how this guy fills up such structs - looks sick!
         imageMemoryBarrier
             .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
             .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
@@ -373,9 +369,9 @@ namespace vlb {
     {
         vk::ImageCreateInfo imageInfo{};
         imageInfo.imageType = vk::ImageType::e2D;
-        imageInfo.format = m_surfaceFormat.format;
-        imageInfo.extent.width = m_windowWidth;
-        imageInfo.extent.height = m_windowHeight;
+        imageInfo.format = this->m_surfaceFormat.format;
+        imageInfo.extent.width = this->m_windowWidth;
+        imageInfo.extent.height = this->m_windowHeight;
         imageInfo.extent.depth = 1;
         imageInfo.mipLevels = 1;
         imageInfo.arrayLayers = 1;
@@ -383,42 +379,39 @@ namespace vlb {
         imageInfo.tiling = vk::ImageTiling::eOptimal;
         imageInfo.usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage;
         imageInfo.initialLayout = vk::ImageLayout::eUndefined;
-        m_rayGenStorage.image = m_device.createImage(imageInfo);
-
-        // TODO: make this Application class's member
-        vk::PhysicalDeviceMemoryProperties memoryProperties = m_physicalDevice.getMemoryProperties();
+        this->m_rayGenStorage.handle = this->m_device.createImageUnique(imageInfo);
 
         vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eDeviceLocal;
-        vk::MemoryRequirements memReq = m_device.getImageMemoryRequirements(m_rayGenStorage.image);
+        vk::MemoryRequirements memReq = this->m_device.getImageMemoryRequirements(this->m_rayGenStorage.handle.get());
         vk::MemoryAllocateInfo allocInfo{};
         allocInfo.allocationSize  = memReq.size;
-        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+        for (uint32_t i = 0; i < this->physicalDeviceMemoryProperties.memoryTypeCount; ++i)
         {
-            if ((memReq.memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties)
+            if ((memReq.memoryTypeBits & (1 << i)) && ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & properties)
                         == properties))
             {
                 allocInfo.memoryTypeIndex = i;
                 break;
             }
         }
-        m_rayGenStorage.memory = m_device.allocateMemory(allocInfo);
-        m_device.bindImageMemory(m_rayGenStorage.image, m_rayGenStorage.memory, 0);
+        this->m_rayGenStorage.memory = this->m_device.allocateMemoryUnique(allocInfo);
+        this->m_device.bindImageMemory(this->m_rayGenStorage.handle.get(), this->m_rayGenStorage.memory.get(), 0);
 
         vk::ImageViewCreateInfo imageViewInfo{};
         imageViewInfo.viewType = vk::ImageViewType::e2D;
-        imageViewInfo.format = m_surfaceFormat.format;
+        imageViewInfo.format = this->m_surfaceFormat.format;
         imageViewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
         imageViewInfo.subresourceRange.baseMipLevel = 0;
         imageViewInfo.subresourceRange.levelCount = 1;
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
-        imageViewInfo.image = m_rayGenStorage.image;
-        m_rayGenStorage.imageView = m_device.createImageView(imageViewInfo);
+        imageViewInfo.image = this->m_rayGenStorage.handle.get();
+        this->m_rayGenStorage.imageView = this->m_device.createImageViewUnique(imageViewInfo);
 
         vk::CommandBuffer commandBuffer = recordCommandBuffer();
-        setImageLayout(commandBuffer, m_rayGenStorage.image, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
+        setImageLayout(commandBuffer, this->m_rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
                 { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-        flushCommandBuffer(commandBuffer, m_graphicsQueue);
+        flushCommandBuffer(commandBuffer, this->m_graphicsQueue);
     }
 
     void Raytracer::createUniformBuffer()
@@ -428,17 +421,190 @@ namespace vlb {
 
     void Raytracer::createRayTracingPipeline()
     {
-        //TODO
+        vk::DescriptorSetLayoutBinding accelerationStructureLayoutBinding{};
+        accelerationStructureLayoutBinding
+            .setBinding(0)
+            .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+            .setDescriptorCount(1)
+            .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
+
+        vk::DescriptorSetLayoutBinding resultImageLayoutBinding{};
+        resultImageLayoutBinding
+            .setBinding(1)
+            .setDescriptorType(vk::DescriptorType::eStorageImage)
+            .setDescriptorCount(1)
+            .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
+
+        std::vector<vk::DescriptorSetLayoutBinding> binding{ accelerationStructureLayoutBinding, resultImageLayoutBinding };
+        this->descriptorSetLayout = m_device.createDescriptorSetLayoutUnique(
+            vk::DescriptorSetLayoutCreateInfo{}
+            .setBindings(binding)
+        );
+
+        this->pipelineLayout = m_device.createPipelineLayoutUnique(
+            vk::PipelineLayoutCreateInfo{}
+            .setSetLayouts(descriptorSetLayout.get())
+        );
+
+        std::array<vk::PipelineShaderStageCreateInfo, 3> shaderStages{};
+        const uint32_t shaderIndexRaygen = 0;
+        const uint32_t shaderIndexMiss = 1;
+        const uint32_t shaderIndexClosestHit = 2;
+
+        std::vector<vk::UniqueShaderModule> shaderModules{};
+        std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shaderGroups{};
+
+        shaderModules.push_back(Application::createShaderModule("shaders/basic.rgen.spv"));
+        shaderStages[shaderIndexRaygen] =
+            vk::PipelineShaderStageCreateInfo{}
+            .setStage(vk::ShaderStageFlagBits::eRaygenKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(
+            vk::RayTracingShaderGroupCreateInfoKHR{}
+            .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+            .setGeneralShader(shaderIndexRaygen)
+            .setClosestHitShader(VK_SHADER_UNUSED_KHR)
+            .setAnyHitShader(VK_SHADER_UNUSED_KHR)
+            .setIntersectionShader(VK_SHADER_UNUSED_KHR)
+        );
+
+        shaderModules.push_back(Application::createShaderModule("shaders/basic.rmiss.spv"));
+        shaderStages[shaderIndexMiss] =
+            vk::PipelineShaderStageCreateInfo{}
+            .setStage(vk::ShaderStageFlagBits::eMissKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(
+            vk::RayTracingShaderGroupCreateInfoKHR{}
+            .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+            .setGeneralShader(shaderIndexMiss)
+            .setClosestHitShader(VK_SHADER_UNUSED_KHR)
+            .setAnyHitShader(VK_SHADER_UNUSED_KHR)
+            .setIntersectionShader(VK_SHADER_UNUSED_KHR)
+        );
+
+        shaderModules.push_back(Application::createShaderModule("shaders/basic.rchit.spv"));
+        shaderStages[shaderIndexClosestHit] =
+            vk::PipelineShaderStageCreateInfo{}
+            .setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(
+            vk::RayTracingShaderGroupCreateInfoKHR{}
+            .setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
+            .setGeneralShader(VK_SHADER_UNUSED_KHR)
+            .setClosestHitShader(shaderIndexClosestHit)
+            .setAnyHitShader(VK_SHADER_UNUSED_KHR)
+            .setIntersectionShader(VK_SHADER_UNUSED_KHR)
+        );
+
+        this->shaderGroupsCount = static_cast<uint32_t>(shaderGroups.size());
+
+        auto[result, p] = m_device.createRayTracingPipelineKHRUnique(nullptr, nullptr,
+            vk::RayTracingPipelineCreateInfoKHR{}
+            .setStages(shaderStages)
+            .setGroups(shaderGroups)
+            .setMaxPipelineRayRecursionDepth(1)
+            .setLayout(pipelineLayout.get())
+        );
+
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to create ray tracing pipeline");
+        }
+        else
+        {
+            this->pipeline = std::move(p);
+        }
     }
 
     void Raytracer::createShaderBindingTable()
     {
-        //TODO
+        auto deviceProperties = this->m_physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+        auto RTPipelineProperties = deviceProperties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+
+        auto alignedSize = [](uint32_t value, uint32_t alignment)
+        {
+            return (value + alignment - 1) & ~(alignment - 1);
+        };
+
+        const uint32_t handleSize        = RTPipelineProperties.shaderGroupHandleSize;
+        const uint32_t handleSizeAligned = alignedSize(handleSize, RTPipelineProperties.shaderGroupHandleAlignment);
+        const uint32_t sbtSize           = this->shaderGroupsCount * handleSizeAligned;
+
+        const vk::BufferUsageFlags sbtBufferUsageFlags = vk::BufferUsageFlagBits::eShaderBindingTableKHR
+            | vk::BufferUsageFlagBits::eTransferSrc
+            | vk::BufferUsageFlagBits::eShaderDeviceAddress;
+
+        const vk::MemoryPropertyFlags sbtMemoryProperty = vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent;
+
+        std::vector<uint8_t> shaderHandles(sbtSize);
+        auto result = this->m_device.getRayTracingShaderGroupHandlesKHR(this->pipeline.get(), 0, this->shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to get ray tracing shader group handles");
+        }
+
+        std::vector<std::string> keys = { "rayGen", "miss", "hit" };
+        for (auto i{0}; i < keys.size(); ++i)
+        {
+            sbt.storage.push_back(createBuffer(handleSize, sbtBufferUsageFlags, sbtMemoryProperty, shaderHandles.data() + i * handleSizeAligned));
+            sbt.entries[keys[i]] = vk::StridedDeviceAddressRegionKHR{};
+            sbt.entries[keys[i]]
+                .setDeviceAddress(sbt.storage.back().deviceAddress)
+                .setStride(handleSizeAligned)
+                .setSize(handleSizeAligned);
+        }
     }
 
     void Raytracer::createDescriptorSets()
     {
-        //TODO
+        std::vector<vk::DescriptorPoolSize> poolSizes = {
+            {vk::DescriptorType::eAccelerationStructureKHR, 1},
+            {vk::DescriptorType::eStorageImage, 1}
+        };
+
+        auto descriptorPool = this->m_device.createDescriptorPoolUnique(
+                vk::DescriptorPoolCreateInfo{}
+                .setPoolSizes(poolSizes)
+                .setMaxSets(1)
+                .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
+                );
+
+        auto descriptorSets = this->m_device.allocateDescriptorSetsUnique(
+                vk::DescriptorSetAllocateInfo{}
+                .setDescriptorPool(descriptorPool.get())
+                .setSetLayouts(descriptorSetLayout.get())
+                );
+        auto descriptorSet = std::move(descriptorSets.front());
+
+        vk::WriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo{};
+        descriptorAccelerationStructureInfo
+            .setAccelerationStructures(this->m_tlas.handle);
+
+        vk::WriteDescriptorSet accelerationStructureWrite{};
+        accelerationStructureWrite
+            .setDstSet(descriptorSet.get())
+            .setDstBinding(0)
+            .setDescriptorCount(1)
+            .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+            .setPNext(&descriptorAccelerationStructureInfo);
+
+        vk::DescriptorImageInfo imageDescriptor{};
+        imageDescriptor
+            .setImageView(this->m_rayGenStorage.imageView.get())
+            .setImageLayout(vk::ImageLayout::eGeneral);
+
+        vk::WriteDescriptorSet resultImageWrite{};
+        resultImageWrite
+            .setDstSet(descriptorSet.get())
+            .setDescriptorType(vk::DescriptorType::eStorageImage)
+            .setDstBinding(1)
+            .setImageInfo(imageDescriptor);
+
+        this->m_device.updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
     }
 
     void Raytracer::buildCommandBuffers()
@@ -456,15 +622,14 @@ namespace vlb {
         createBLAS();
         createTLAS();
         createStorageImage();
+        createRayTracingPipeline();
+        createShaderBindingTable();
+        createDescriptorSets();
     }
 
     // TODO(on abstraction stage): unique handles for vulkan objects to clear up this mess in destructor :)
     Raytracer::~Raytracer()
     {
-        m_device.freeMemory(m_rayGenStorage.memory);
-        m_device.destroy(m_rayGenStorage.image);
-        m_device.destroy(m_rayGenStorage.imageView);
-
         m_device.freeMemory(m_blas.memory);
         m_device.destroy(m_blas.buffer);
         m_device.destroy(m_blas.handle);

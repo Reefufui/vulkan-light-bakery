@@ -8,6 +8,7 @@
 *.xcodeproj
 build
 assets
+*.spv
 
 .vs/
 out/

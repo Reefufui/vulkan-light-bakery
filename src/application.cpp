@@ -2,6 +2,8 @@
 
 #include "application.hpp"
 
+#include <fstream>
+
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace vlb {
@@ -145,6 +147,7 @@ namespace vlb {
 
         assert(a_physicalDeviceIdx < deviceCount);
         m_physicalDevice = devices[a_physicalDeviceIdx];
+        this->physicalDeviceMemoryProperties = m_physicalDevice.getMemoryProperties();
 
         vk::DeviceQueueCreateInfo queueCreateInfo{};
         queueCreateInfo.queueFamilyIndex = getQueueFamilyIndex();
@@ -213,6 +216,23 @@ namespace vlb {
         m_commandPool = m_device.createCommandPool(poolInfo, nullptr);
     }
 
+    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequiriments, const vk::MemoryPropertyFlags memoryProperties)
+    {
+        int32_t result{-1};
+        for (uint32_t i{}; i < VK_MAX_MEMORY_TYPES; ++i) {
+            if (memoryRequiriments.memoryTypeBits & (1 << i)) {
+                if ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties) {
+                    result = i;
+                    break;
+                }
+            }
+        }
+        if (result == -1) {
+            throw std::runtime_error("failed to get memory type index");
+        }
+        return result;
+    }
+
     vk::CommandBuffer Application::recordCommandBuffer(vk::CommandBufferAllocateInfo a_info)
     {
         auto info = a_info == vk::CommandBufferAllocateInfo{};
@@ -244,6 +264,145 @@ namespace vlb {
         }
         m_device.destroy(fence);
         m_device.freeCommandBuffers(m_commandPool, 1, &a_cmdBuffer);
+    }
+
+    void Application::setImageLayout(
+            vk::CommandBuffer cmdbuffer,
+            vk::Image image,
+            vk::ImageLayout oldImageLayout,
+            vk::ImageLayout newImageLayout,
+            vk::ImageSubresourceRange subresourceRange,
+            vk::PipelineStageFlags srcStageMask,
+            vk::PipelineStageFlags dstStageMask)
+    {
+        vk::ImageMemoryBarrier imageMemoryBarrier{};
+        imageMemoryBarrier
+            .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+            .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+            .setImage(image)
+            .setOldLayout(oldImageLayout)
+            .setNewLayout(newImageLayout)
+            .setSubresourceRange(subresourceRange);
+
+        // Source layouts (old)
+        switch (oldImageLayout) {
+            case vk::ImageLayout::eUndefined:
+                imageMemoryBarrier.srcAccessMask = {};
+                break;
+            case vk::ImageLayout::ePreinitialized:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite;
+                break;
+            case vk::ImageLayout::eColorAttachmentOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+                break;
+            case vk::ImageLayout::eDepthStencilAttachmentOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+                break;
+            case vk::ImageLayout::eTransferSrcOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+                break;
+            case vk::ImageLayout::eTransferDstOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                break;
+            case vk::ImageLayout::eShaderReadOnlyOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+                break;
+            default:
+                break;
+        }
+
+        // Target layouts (new)
+        switch (newImageLayout) {
+            case vk::ImageLayout::eTransferDstOptimal:
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+                break;
+            case vk::ImageLayout::eTransferSrcOptimal:
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+                break;
+            case vk::ImageLayout::eColorAttachmentOptimal:
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+                break;
+            case vk::ImageLayout::eDepthStencilAttachmentOptimal:
+                imageMemoryBarrier.dstAccessMask = imageMemoryBarrier.dstAccessMask | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+                break;
+            case vk::ImageLayout::eShaderReadOnlyOptimal:
+                if (imageMemoryBarrier.srcAccessMask == vk::AccessFlags{}) {
+                    imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eTransferWrite;
+                }
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+                break;
+            default:
+                break;
+        }
+
+        cmdbuffer.pipelineBarrier(
+                srcStageMask,      // srcStageMask
+                dstStageMask,      // dstStageMask
+                {},                // dependencyFlags
+                {},                // memoryBarriers
+                {},                // bufferMemoryBarriers
+                imageMemoryBarrier // imageMemoryBarriers
+                );
+    }
+
+    vk::UniqueShaderModule Application::createShaderModule(const std::string& filename)
+    {
+        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+        if (!file.is_open()) {
+            throw std::runtime_error("failed to open file!");
+        }
+
+        size_t fileSize = (size_t) file.tellg();
+        std::vector<char> code(fileSize);
+
+        file.seekg(0);
+        file.read(code.data(), fileSize);
+
+        file.close();
+
+        vk::UniqueShaderModule shaderModule = m_device.createShaderModuleUnique({
+                {}, code.size(), reinterpret_cast<const uint32_t*>(code.data()) });
+
+        return shaderModule;
+    }
+
+    Application::Buffer Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
+    {
+        Buffer buffer{};
+        buffer.handle = this->m_device.createBufferUnique(
+            vk::BufferCreateInfo{}
+            .setSize(size)
+            .setUsage(usage)
+            .setQueueFamilyIndexCount(0)
+        );
+
+        auto memoryRequirements = this->m_device.getBufferMemoryRequirements(buffer.handle.get());
+        vk::MemoryAllocateFlagsInfo memoryFlagsInfo{};
+        if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress)
+        {
+            memoryFlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+        }
+
+        buffer.memory = this->m_device.allocateMemoryUnique(
+            vk::MemoryAllocateInfo{}
+            .setAllocationSize(memoryRequirements.size)
+            .setMemoryTypeIndex(Application::getMemoryType(memoryRequirements, memoryProperty))
+            .setPNext(&memoryFlagsInfo)
+        );
+        this->m_device.bindBufferMemory(buffer.handle.get(), buffer.memory.get(), 0);
+
+        if (data)
+        {
+            //TODO: flushing small command buffer if device local memory requested
+            void* dataPtr = this->m_device.mapMemory(buffer.memory.get(), 0, size);
+            memcpy(dataPtr, data, static_cast<size_t>(size));
+            this->m_device.unmapMemory(buffer.memory.get());
+        }
+
+        buffer.deviceAddress = this->m_device.getBufferAddressKHR({buffer.handle.get()});
+
+        return buffer;
     }
 
     void Application::checkValidationLayers(const std::vector<const char*>& a_layersToCheck)
@@ -334,7 +493,7 @@ namespace vlb {
 
         checkValidationLayers(m_instanceLayers);
         checkExtensions(m_instanceExtensions);
-        vk::ApplicationInfo applicationInfo("Vulkan", 1, "Asama", 1, VK_API_VERSION_1_1);
+        vk::ApplicationInfo applicationInfo("Vulkan Light Bakery", 1, "Asama", 1, VK_API_VERSION_1_2);
         vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(), &applicationInfo,
                 uint32_t(m_instanceLayers.size()), m_instanceLayers.data(),
                 uint32_t(m_instanceExtensions.size()), m_instanceExtensions.data());

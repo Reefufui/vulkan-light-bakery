@@ -39,9 +39,40 @@ namespace vlb {
 
             void createInstance();
             void createDevice(size_t a_physicalDeviceIdx = 0);
+
+            vk::PhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+            uint32_t getMemoryType(const vk::MemoryRequirements& memoryRequiriments, const vk::MemoryPropertyFlags memoryProperties);
+
+            void setImageLayout(
+                    vk::CommandBuffer cmdbuffer,
+                    vk::Image image,
+                    vk::ImageLayout oldImageLayout,
+                    vk::ImageLayout newImageLayout,
+                    vk::ImageSubresourceRange subresourceRange,
+                    vk::PipelineStageFlags srcStageMask = vk::PipelineStageFlagBits::eAllCommands,
+                    vk::PipelineStageFlags dstStageMask = vk::PipelineStageFlagBits::eAllCommands);
+
             void createCommandPool();
             vk::CommandBuffer recordCommandBuffer(vk::CommandBufferAllocateInfo a_info = {});
             void flushCommandBuffer(vk::CommandBuffer& a_cmdBuffer, vk::Queue a_queue);
+
+            vk::UniqueShaderModule createShaderModule(const std::string& filename);
+
+            struct Buffer
+            {
+                vk::UniqueBuffer         handle;
+                vk::UniqueDeviceMemory   memory;
+                vk::DeviceAddress        deviceAddress;
+            };
+
+            struct Image
+            {
+                vk::UniqueImage        handle;
+                vk::UniqueDeviceMemory memory;
+                vk::UniqueImageView    imageView;
+            };
+
+            Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data = nullptr);
 
         private:
 

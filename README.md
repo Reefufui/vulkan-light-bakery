@@ -10,16 +10,13 @@ The goal of the project is to implement and improve Activision's UberBake Light 
 
 ## Building the Project
 
- 1. Clone this repository with the `--recurse-submodules` flag.
-
-
- 2. Build the project using the standard CMake building process.
+Build the project using the standard CMake building process.
 ```
-git clone git@github.com:Reefufui/vulkan-light-bakery.git --recurse-submodules
+git clone git@github.com:Reefufui/vulkan-light-bakery.git
 cd vulkan-light-bakery
 mkdir build
 cd build
-conan install ..
+conan install .. --build=missing
 cmake ..
 make -j 10
 ```
@@ -32,6 +29,7 @@ make -j 10
 
 ## References and Acknowledgments
  - [1] [The design and evolution of the UberBake light baking system](https://darioseyb.com/pdf/seyb20uberbake.pdf)
- - [2] [Dear ImGui](https://github.com/ocornut/imgui)
- - [3] [tinygltf](https://github.com/syoyo/tinygltf.git)
+ - [2] [Vulkan HPP](https://github.com/KhronosGroup/Vulkan-Hpp)
+ - [3] [Dear ImGui](https://github.com/ocornut/imgui)
+ - [4] [TinyGLTF](https://github.com/syoyo/tinygltf.git)
 

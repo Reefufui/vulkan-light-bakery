@@ -4,14 +4,16 @@
 #define RAYTRACER_HPP
 
 #include "renderer.hpp"
-//TODO: #include "acceleration_structure.hpp"
+//TODO: #include "acceleration_structure.hpp" - maybe ??
 //TODO: #include "scene.hpp"
-//TODO: #include "image.hpp"
+
+#include <unordered_map>
 
 namespace vlb {
 
     //TODO: class implemetation in sepparate file
-    struct AccelerationStructure {
+    struct AccelerationStructure
+    {
         vk::AccelerationStructureKHR handle;
         uint64_t deviceAddress = 0;
         vk::DeviceMemory memory;
@@ -21,9 +23,9 @@ namespace vlb {
     //TODO: should be part of acceleration_structure.hpp's class
     struct RayTracingScratchBuffer
     {
-        uint64_t deviceAddress = 0;
         vk::Buffer handle;
         vk::DeviceMemory memory;
+        uint64_t deviceAddress = 0;
     };
 
     //TODO: should be part of scene.hpp's class
@@ -35,14 +37,6 @@ namespace vlb {
         vk::Buffer vBuffer;
         vk::Buffer iBuffer;
         vk::Buffer tBuffer;
-    };
-
-    //TODO: should be part of image.hpp's class
-    struct Image
-    {
-        vk::Image        image;
-        vk::DeviceMemory memory;
-        vk::ImageView    imageView;
     };
 
     class Raytracer : public Renderer
@@ -58,14 +52,28 @@ namespace vlb {
             void buildCommandBuffers();
             void draw();
 
-        public:
-            Raytracer();
-            ~Raytracer();
+            struct ShaderBindingTable
+            {
+                std::unordered_map<std::string, vk::StridedDeviceAddressRegionKHR> entries;
+                std::vector<Buffer> storage;
+            };
 
             AccelerationStructure m_blas;
             AccelerationStructure m_tlas;
             Scene m_scene;
             Image m_rayGenStorage;
+            ShaderBindingTable sbt;
+
+            //NOTE: ok for now (trying out not to use m_... prefix | using self->... instead)
+            vk::UniquePipeline            pipeline;
+            vk::UniquePipelineLayout      pipelineLayout;
+            vk::UniqueDescriptorSetLayout descriptorSetLayout;
+            uint32_t                      shaderGroupsCount;
+
+        public:
+            Raytracer();
+            ~Raytracer();
+
     };
 
 }
