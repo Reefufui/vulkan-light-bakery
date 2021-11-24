@@ -162,11 +162,13 @@ namespace vlb {
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
             vk::PhysicalDeviceBufferDeviceAddressFeatures,
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>{
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR>{
                 deviceCreateInfo,
                 vk::PhysicalDeviceFeatures2(),
                 vk::PhysicalDeviceBufferDeviceAddressFeatures(),
-                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR()
+                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR(),
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR()
             };
 
         m_physicalDevice.getFeatures2(&c.get<vk::PhysicalDeviceFeatures2>());
@@ -209,6 +211,39 @@ namespace vlb {
         poolInfo.queueFamilyIndex = getQueueFamilyIndex();
 
         m_commandPool = m_device.createCommandPool(poolInfo, nullptr);
+    }
+
+    vk::CommandBuffer Application::recordCommandBuffer(vk::CommandBufferAllocateInfo a_info)
+    {
+        auto info = a_info == vk::CommandBufferAllocateInfo{};
+        a_info = info ? vk::CommandBufferAllocateInfo(m_commandPool, vk::CommandBufferLevel::ePrimary, 1) : a_info;
+
+        vk::CommandBuffer cmdBuffer = m_device.allocateCommandBuffers(a_info).front();
+        cmdBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+        return cmdBuffer;
+    }
+
+    void Application::flushCommandBuffer(vk::CommandBuffer& a_cmdBuffer, vk::Queue a_queue)
+    {
+        a_cmdBuffer.end();
+        vk::SubmitInfo submitInfo{};
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &a_cmdBuffer;
+
+        vk::Fence fence = m_device.createFence(vk::FenceCreateInfo());
+        a_queue.submit(submitInfo, fence);
+        try {
+            auto r = m_device.waitForFences(fence, false, 1000000000);
+            if (r != vk::Result::eSuccess) std::cout << "flushing failed!\n";
+        }
+        catch (std::exception const &e)
+        {
+            std::cout << e.what() << "\n";
+            std::cout << "dont close the window THAT fast\n";
+        }
+        m_device.destroy(fence);
+        m_device.freeCommandBuffers(m_commandPool, 1, &a_cmdBuffer);
     }
 
     void Application::checkValidationLayers(const std::vector<const char*>& a_layersToCheck)

@@ -232,7 +232,6 @@ namespace vlb {
         m_window  = createWindow();
         m_surface = createSurface();
         m_graphicsQueue = m_device.getQueue(getQueueFamilyIndex(), 0);
-        m_presentQueue  = m_device.getQueue(getQueueFamilyIndex(), 0);
     }
 
     Renderer::~Renderer()

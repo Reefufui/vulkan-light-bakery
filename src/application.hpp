@@ -40,6 +40,8 @@ namespace vlb {
             void createInstance();
             void createDevice(size_t a_physicalDeviceIdx = 0);
             void createCommandPool();
+            vk::CommandBuffer recordCommandBuffer(vk::CommandBufferAllocateInfo a_info = {});
+            void flushCommandBuffer(vk::CommandBuffer& a_cmdBuffer, vk::Queue a_queue);
 
         private:
 

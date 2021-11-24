@@ -4,9 +4,37 @@
 #define RAYTRACER_HPP
 
 #include "renderer.hpp"
-#include "acceleration_structure.hpp"
+//TODO: #include "acceleration_structure.hpp"
+//TODO: #include "scene.hpp"
 
 namespace vlb {
+
+    //TODO: class implemetation in sepparate file
+    struct AccelerationStructure {
+        vk::AccelerationStructureKHR handle;
+        uint64_t deviceAddress = 0;
+        vk::DeviceMemory memory;
+        vk::Buffer buffer;
+    };
+
+    //TODO: should be part of acceleration_structure.hpp's class
+    struct RayTracingScratchBuffer
+    {
+        uint64_t deviceAddress = 0;
+        vk::Buffer handle;
+        vk::DeviceMemory memory;
+    };
+
+    //TODO: should be part of scene.hpp's class
+    struct Scene
+    {
+        vk::DeviceMemory vBufferMemory;
+        vk::DeviceMemory iBufferMemory;
+        vk::DeviceMemory tBufferMemory;
+        vk::Buffer vBuffer;
+        vk::Buffer iBuffer;
+        vk::Buffer tBuffer;
+    };
 
     class Raytracer : public Renderer
     {
@@ -25,7 +53,9 @@ namespace vlb {
             Raytracer();
             ~Raytracer();
 
-            AccelerationStructure as{&m_device};
+            AccelerationStructure m_blas;
+            AccelerationStructure m_tlas;
+            Scene m_scene;
     };
 
 }
