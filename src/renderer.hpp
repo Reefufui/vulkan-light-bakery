@@ -20,12 +20,8 @@ namespace vlb {
             };
 
             typedef std::unique_ptr<GLFWwindow, WindowDestroy> UniqueWindow;
-
-            UniqueWindow m_window;
-
-            vk::UniqueSurfaceKHR                 m_surface;
-            vk::UniqueSwapchainKHR               m_swapchain;
-            std::vector<vk::UniqueImageView>     m_swapchainImageViews;
+            UniqueWindow         m_window;
+            vk::UniqueSurfaceKHR m_surface;
 
             UniqueWindow createWindow(const int& a_windowWidth = 480, const int& a_windowHeight = 480);
             vk::UniqueSurfaceKHR createSurface();
@@ -33,9 +29,9 @@ namespace vlb {
             bool isSurfaceSupported(const vk::UniqueSurfaceKHR& a_surface);
             vk::UniqueSwapchainKHR createSwapchain();
             void createSwapchainResourses();
-            void createDrawCommandBuffers();
             void createSyncObjects();
             virtual void draw() = 0;
+            const int maxFramesInFlight = 2;
 
         protected:
             vk::Queue            m_graphicsQueue;
@@ -44,21 +40,23 @@ namespace vlb {
             uint32_t             m_windowWidth;
             uint32_t             m_windowHeight;
 
-            std::vector<vk::UniqueCommandBuffer> drawCommandBuffers{};
-            std::vector<vk::Image>               swapChainImages{};
-
-            const int maxFramesInFlight = 2;
             std::vector<vk::UniqueSemaphore> imageAvailableSemaphores;
             std::vector<vk::UniqueSemaphore> renderFinishedSemaphores;
-            std::vector<vk::UniqueFence> inFlightFences;
-            std::vector<vk::UniqueFence> imagesInFlight;
+            std::vector<vk::Fence> inFlightFences;
+            std::vector<vk::Fence> imagesInFlight;
 
+            vk::UniqueSwapchainKHR m_swapchain;
+            std::vector<vk::UniqueImageView> m_swapchainImageViews;
+            std::vector<vk::Image> swapChainImages{};
+            std::vector<vk::UniqueCommandBuffer> createDrawCommandBuffers();
+            void present(uint32_t imageIndex);
             size_t currentFrame = 0;
 
         public:
 
             Renderer();
             void render();
+            ~Renderer();
     };
 
 }

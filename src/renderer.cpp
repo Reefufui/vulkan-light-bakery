@@ -198,9 +198,9 @@ namespace vlb {
         }
     }
 
-    void Renderer::createDrawCommandBuffers()
+    std::vector<vk::UniqueCommandBuffer> Renderer::createDrawCommandBuffers()
     {
-        this->drawCommandBuffers = this->m_device.allocateCommandBuffersUnique(
+        return this->m_device.allocateCommandBuffersUnique(
                 vk::CommandBufferAllocateInfo{}
                 .setCommandPool(this->m_commandPool)
                 .setLevel(vk::CommandBufferLevel::ePrimary)
@@ -218,7 +218,22 @@ namespace vlb {
         for (size_t i = 0; i < this->maxFramesInFlight; i++) {
             imageAvailableSemaphores[i] = this->m_device.createSemaphoreUnique({});
             renderFinishedSemaphores[i] = this->m_device.createSemaphoreUnique({});
-            inFlightFences[i] = this->m_device.createFenceUnique({ vk::FenceCreateFlagBits::eSignaled });
+            inFlightFences[i] = this->m_device.createFence({ vk::FenceCreateFlagBits::eSignaled });
+        }
+    }
+
+    void Renderer::present(uint32_t imageIndex)
+    {
+        auto result = this->m_graphicsQueue.presentKHR(
+                vk::PresentInfoKHR{}
+                .setWaitSemaphores(this->renderFinishedSemaphores[this->currentFrame].get())
+                .setSwapchains(this->m_swapchain.get())
+                .setImageIndices(imageIndex)
+                );
+
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to present image");
         }
     }
 
@@ -228,6 +243,8 @@ namespace vlb {
         {
             glfwPollEvents();
             draw();
+
+            this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
         }
 
         m_device.waitIdle();
@@ -249,6 +266,14 @@ namespace vlb {
         createSyncObjects();
 
         m_graphicsQueue = m_device.getQueue(getQueueFamilyIndex(), 0);
+    }
+
+    Renderer::~Renderer()
+    {
+        for (size_t i = 0; i < this->maxFramesInFlight; ++i)
+        {
+            this->m_device.destroy(this->inFlightFences[i]);
+        }
     }
 
 }

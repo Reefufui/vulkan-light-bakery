@@ -158,7 +158,7 @@ namespace vlb {
 
         // Build the acceleration structure on the device via a one-time command buffer submission
         vk::CommandBuffer commandBuffer = recordCommandBuffer();
-        //commandBuffer.buildAccelerationStructuresKHR(1, &buildInfo, buildRangeInfos.data());
+        commandBuffer.buildAccelerationStructuresKHR(1, &buildInfo, buildRangeInfos.data());
         flushCommandBuffer(commandBuffer, m_graphicsQueue); //<- keep having errors... (may be because vulkan.hpp doesnot initialize some stucts)
         m_blas.deviceAddress = m_device.getAccelerationStructureAddressKHR({m_blas.handle});
 
@@ -536,6 +536,7 @@ namespace vlb {
 
     void Raytracer::recordDrawCommandBuffers()
     {
+        this->drawCommandBuffers = createDrawCommandBuffers();
         vk::ImageSubresourceRange subresourceRange{};
         subresourceRange
             .setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -544,9 +545,9 @@ namespace vlb {
             .setBaseArrayLayer(0)
             .setLayerCount(1);
 
-        for (int32_t i = 0; i < drawCommandBuffers.size(); ++i)
+        for (int32_t i = 0; i < this->drawCommandBuffers.size(); ++i)
         {
-            auto& commandBuffer  = drawCommandBuffers[i];
+            auto& commandBuffer  = this->drawCommandBuffers[i];
             auto& swapChainImage = this->swapChainImages[i];
 
             commandBuffer->begin(vk::CommandBufferBeginInfo{});
@@ -602,7 +603,45 @@ namespace vlb {
 
     void Raytracer::draw()
     {
-        //TODO
+        uint64_t timeout = 10000000000000;
+        if (m_device.waitForFences(this->inFlightFences[this->currentFrame], true, timeout) != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("drawing failed!");
+        }
+
+        auto [result, imageIndex] = this->m_device.acquireNextImageKHR(
+            this->m_swapchain.get(),
+            timeout,
+            imageAvailableSemaphores[this->currentFrame].get()
+        );
+
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to acquire next image!");
+        }
+
+        if (this->imagesInFlight[imageIndex] != vk::Fence{})
+        {
+            if (this->m_device.waitForFences(this->imagesInFlight[imageIndex], true, timeout) != vk::Result::eSuccess)
+            {
+                throw std::runtime_error("drawing failed!");
+            }
+        }
+        this->imagesInFlight[imageIndex] = this->inFlightFences[this->currentFrame];
+
+        this->m_device.resetFences(this->inFlightFences[this->currentFrame]);
+
+        vk::PipelineStageFlags waitStage{vk::PipelineStageFlagBits::eRayTracingShaderKHR};
+        vk::SubmitInfo submitInfo{};
+        submitInfo
+            .setWaitSemaphores(this->imageAvailableSemaphores[this->currentFrame].get())
+            .setWaitDstStageMask(waitStage)
+            .setCommandBuffers(this->drawCommandBuffers[imageIndex].get())
+            .setSignalSemaphores(this->renderFinishedSemaphores[this->currentFrame].get());
+
+        this->m_graphicsQueue.submit(submitInfo, this->inFlightFences[this->currentFrame]);
+
+        Renderer::present(imageIndex);
     }
 
     Raytracer::Raytracer()

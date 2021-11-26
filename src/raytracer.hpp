@@ -72,6 +72,8 @@ namespace vlb {
             vk::UniqueDescriptorPool      descriptorPool;
             vk::UniqueDescriptorSet       descriptorSet;
 
+            std::vector<vk::UniqueCommandBuffer> drawCommandBuffers{};
+
         public:
             Raytracer();
             ~Raytracer();
