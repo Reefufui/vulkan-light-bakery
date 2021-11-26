@@ -258,7 +258,7 @@ namespace vlb {
         Application::createDevice();
         Application::createCommandPool();
 
-        m_window  = createWindow();
+        m_window  = createWindow(1920, 1080);
         m_surface = createSurface();
         m_swapchain = createSwapchain();
         createSwapchainResourses();

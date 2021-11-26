@@ -5,5 +5,5 @@ layout(location = 0) rayPayloadInEXT vec3 payLoad;
 
 void main()
 {
-    payLoad = vec3(0.0, 0.5, 0.2);
+    payLoad = vec3(0.2, 0.2, 0.2);
 }
