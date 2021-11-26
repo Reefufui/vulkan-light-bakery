@@ -188,7 +188,7 @@ namespace vlb {
     {
         vk::ImageCreateInfo imageInfo{};
         imageInfo.imageType = vk::ImageType::e2D;
-        imageInfo.format = this->m_surfaceFormat.format;
+        imageInfo.format = this->surfaceFormat;
         imageInfo.extent.width = this->m_windowWidth;
         imageInfo.extent.height = this->m_windowHeight;
         imageInfo.extent.depth = 1;
@@ -218,7 +218,7 @@ namespace vlb {
 
         vk::ImageViewCreateInfo imageViewInfo{};
         imageViewInfo.viewType = vk::ImageViewType::e2D;
-        imageViewInfo.format = this->m_surfaceFormat.format;
+        imageViewInfo.format = this->surfaceFormat;
         imageViewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
         imageViewInfo.subresourceRange.baseMipLevel = 0;
         imageViewInfo.subresourceRange.levelCount = 1;

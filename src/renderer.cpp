@@ -51,72 +51,9 @@ namespace vlb {
 
     vk::UniqueSwapchainKHR Renderer::createSwapchain()
     {
-        vk::SurfaceCapabilitiesKHR capabilities = m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface.get());
-
-        uint32_t formatCount;
-        if (m_physicalDevice.getSurfaceFormatsKHR(m_surface.get(), &formatCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch surface formats");
-        }
-        assert(formatCount);
-
-        std::vector<vk::SurfaceFormatKHR> availableFormats(formatCount);
-
-        if (m_physicalDevice.getSurfaceFormatsKHR(m_surface.get(), &formatCount, availableFormats.data()) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch surface formats");
-        }
-
-        uint32_t presentModeCount;
-        if (m_physicalDevice.getSurfacePresentModesKHR(m_surface.get(), &presentModeCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch present modes");
-        }
-        assert(presentModeCount);
-
-        std::vector<vk::PresentModeKHR> availablePresentModes(presentModeCount);
-
-        if (m_physicalDevice.getSurfacePresentModesKHR(m_surface.get(), &presentModeCount, availablePresentModes.data())
-                != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch present modes");
-        }
-
-        auto compareFormats = [&](const vk::SurfaceFormatKHR& a_surfaceFormat)
-        {
-            return a_surfaceFormat == m_surfaceFormat;
-        };
-
-        if (std::find_if(availableFormats.begin(), availableFormats.end(), compareFormats) == availableFormats.end())
-        {
-            throw std::runtime_error("surface format not found");
-        }
-
-        vk::PresentModeKHR presentMode{};
-
-        auto comparePresentModes = [&](const vk::PresentModeKHR& a_presentMode)
-        {
-            if (a_presentMode == vk::PresentModeKHR::eMailbox)
-            {
-                presentMode = vk::PresentModeKHR::eMailbox;
-                return true;
-            }
-            else if (a_presentMode == vk::PresentModeKHR::eImmediate)
-            {
-                presentMode = vk::PresentModeKHR::eImmediate;
-                return true;
-            }
-
-            return false;
-        };
-
-        if (std::find_if(availablePresentModes.begin(), availablePresentModes.end(), comparePresentModes)
-                == availablePresentModes.end())
-        {
-            presentMode = vk::PresentModeKHR::eFifo;
-        }
-
         vk::Extent2D extent{};
+
+        vk::SurfaceCapabilitiesKHR capabilities = m_physicalDevice.getSurfaceCapabilitiesKHR(this->m_surface.get());
 
         if (capabilities.currentExtent.width != UINT32_MAX)
         {
@@ -139,8 +76,8 @@ namespace vlb {
         createInfo
             .setSurface(this->m_surface.get())
             .setMinImageCount(imageCount)
-            .setImageFormat(this->m_surfaceFormat.format)
-            .setImageColorSpace(this->m_surfaceFormat.colorSpace)
+            .setImageFormat(this->surfaceFormat)
+            .setImageColorSpace(this->surfaceColorSpace)
             .setImageExtent(extent)
             .setImageArrayLayers(1)
             .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst)
@@ -148,7 +85,7 @@ namespace vlb {
             .setQueueFamilyIndices(nullptr)
             .setPreTransform(capabilities.currentTransform)
             .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
-            .setPresentMode(presentMode)
+            .setPresentMode(vk::PresentModeKHR::eFifo)
             .setClipped(VK_TRUE)
             .setOldSwapchain(nullptr);
 
@@ -172,7 +109,7 @@ namespace vlb {
 
         vk::ImageViewCreateInfo createInfo{};
         createInfo.viewType     = vk::ImageViewType::e2D;
-        createInfo.format       = m_surfaceFormat.format;
+        createInfo.format       = this->surfaceFormat;
         createInfo.components.r = vk::ComponentSwizzle::eIdentity;
         createInfo.components.g = vk::ComponentSwizzle::eIdentity;
         createInfo.components.b = vk::ComponentSwizzle::eIdentity;

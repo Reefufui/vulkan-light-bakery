@@ -35,7 +35,8 @@ namespace vlb {
 
         protected:
             vk::Queue            m_graphicsQueue;
-            vk::SurfaceFormatKHR m_surfaceFormat{ vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear };
+            vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
+            vk::ColorSpaceKHR    surfaceColorSpace{vk::ColorSpaceKHR::eSrgbNonlinear};
             //TODO: change to vk::Extent
             uint32_t             m_windowWidth;
             uint32_t             m_windowHeight;
