@@ -136,19 +136,21 @@ namespace vlb {
         }
 
         vk::SwapchainCreateInfoKHR createInfo{};
-        createInfo.surface          = m_surface.get();
-        createInfo.minImageCount    = imageCount;
-        createInfo.imageFormat      = m_surfaceFormat.format;
-        createInfo.imageColorSpace  = m_surfaceFormat.colorSpace;
-        createInfo.imageExtent      = extent;
-        createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage       = vk::ImageUsageFlagBits::eColorAttachment;
-        createInfo.imageSharingMode = vk::SharingMode::eExclusive;
-        createInfo.preTransform     = capabilities.currentTransform;
-        createInfo.compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-        createInfo.presentMode      = presentMode;
-        createInfo.clipped          = VK_TRUE;
-        createInfo.oldSwapchain     = nullptr;
+        createInfo
+            .setSurface(this->m_surface.get())
+            .setMinImageCount(imageCount)
+            .setImageFormat(this->m_surfaceFormat.format)
+            .setImageColorSpace(this->m_surfaceFormat.colorSpace)
+            .setImageExtent(extent)
+            .setImageArrayLayers(1)
+            .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst)
+            .setImageSharingMode(vk::SharingMode::eExclusive)
+            .setQueueFamilyIndices(nullptr)
+            .setPreTransform(capabilities.currentTransform)
+            .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
+            .setPresentMode(presentMode)
+            .setClipped(VK_TRUE)
+            .setOldSwapchain(nullptr);
 
         vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> swapchainDeleter(m_device);
         vk::SwapchainKHR swapChain{};
@@ -162,19 +164,8 @@ namespace vlb {
 
     void Renderer::createSwapchainResourses()
     {
-        uint32_t imageCount{};
-
-        if (m_device.getSwapchainImagesKHR(m_swapchain.get(), &imageCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch swapchain images");
-        }
-
-        m_swapchainImages.resize(imageCount);
-
-        if (m_device.getSwapchainImagesKHR(m_swapchain.get(), &imageCount, m_swapchainImages.data()) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch swapchain images");
-        }
+        this->swapChainImages = this->m_device.getSwapchainImagesKHR(this->m_swapchain.get());
+        uint32_t imageCount = this->swapChainImages.size();
 
         m_swapchainImageViews.resize(imageCount);
         vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> imageViewDeleter(m_device);
@@ -195,7 +186,7 @@ namespace vlb {
         size_t i{};
         for (auto& uniqueImageView : m_swapchainImageViews)
         {
-            createInfo.image        = m_swapchainImages[i++];
+            createInfo.image        = swapChainImages[i++];
 
             vk::ImageView imageView{};
             if (m_device.createImageView(&createInfo, nullptr, &imageView) != vk::Result::eSuccess)
@@ -207,11 +198,32 @@ namespace vlb {
         }
     }
 
+    void Renderer::createDrawCommandBuffers()
+    {
+        this->drawCommandBuffers = this->m_device.allocateCommandBuffersUnique(
+                vk::CommandBufferAllocateInfo{}
+                .setCommandPool(this->m_commandPool)
+                .setLevel(vk::CommandBufferLevel::ePrimary)
+                .setCommandBufferCount(this->swapChainImages.size())
+                );
+    }
+
+    void Renderer::createSyncObjects()
+    {
+        imageAvailableSemaphores.resize(this->maxFramesInFlight);
+        renderFinishedSemaphores.resize(this->maxFramesInFlight);
+        inFlightFences.resize(this->maxFramesInFlight);
+        this->imagesInFlight.resize(this->swapChainImages.size());
+
+        for (size_t i = 0; i < this->maxFramesInFlight; i++) {
+            imageAvailableSemaphores[i] = this->m_device.createSemaphoreUnique({});
+            renderFinishedSemaphores[i] = this->m_device.createSemaphoreUnique({});
+            inFlightFences[i] = this->m_device.createFenceUnique({ vk::FenceCreateFlagBits::eSignaled });
+        }
+    }
+
     void Renderer::render()
     {
-        m_swapchain = createSwapchain();
-        createSwapchainResourses();
-
         while (!glfwWindowShouldClose(m_window.get()))
         {
             glfwPollEvents();
@@ -224,19 +236,19 @@ namespace vlb {
     Renderer::Renderer()
     {
         glfwInit();
-        pushPresentationExtensions();
-        createInstance();
-        createDevice();
-        createCommandPool();
+        Application::pushPresentationExtensions();
+        Application::createInstance();
+        Application::createDevice();
+        Application::createCommandPool();
 
         m_window  = createWindow();
         m_surface = createSurface();
-        m_graphicsQueue = m_device.getQueue(getQueueFamilyIndex(), 0);
-    }
+        m_swapchain = createSwapchain();
+        createSwapchainResourses();
+        createDrawCommandBuffers();
+        createSyncObjects();
 
-    Renderer::~Renderer()
-    {
-        glfwTerminate();
+        m_graphicsQueue = m_device.getQueue(getQueueFamilyIndex(), 0);
     }
 
 }

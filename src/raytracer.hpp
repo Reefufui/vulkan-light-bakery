@@ -49,7 +49,7 @@ namespace vlb {
             void createRayTracingPipeline();
             void createShaderBindingTable();
             void createDescriptorSets();
-            void buildCommandBuffers();
+            void recordDrawCommandBuffers();
             void draw();
 
             struct ShaderBindingTable
@@ -69,6 +69,8 @@ namespace vlb {
             vk::UniquePipelineLayout      pipelineLayout;
             vk::UniqueDescriptorSetLayout descriptorSetLayout;
             uint32_t                      shaderGroupsCount;
+            vk::UniqueDescriptorPool      descriptorPool;
+            vk::UniqueDescriptorSet       descriptorSet;
 
         public:
             Raytracer();

@@ -15,17 +15,17 @@ namespace vlb {
                 void operator()(GLFWwindow* ptr)
                 {
                     glfwDestroyWindow(ptr);
+                    glfwTerminate();
                 }
             };
 
             typedef std::unique_ptr<GLFWwindow, WindowDestroy> UniqueWindow;
 
-            UniqueWindow         m_window;
+            UniqueWindow m_window;
 
-            vk::UniqueSurfaceKHR             m_surface;
-            vk::UniqueSwapchainKHR           m_swapchain;
-            std::vector<vk::Image>           m_swapchainImages;
-            std::vector<vk::UniqueImageView> m_swapchainImageViews;
+            vk::UniqueSurfaceKHR                 m_surface;
+            vk::UniqueSwapchainKHR               m_swapchain;
+            std::vector<vk::UniqueImageView>     m_swapchainImageViews;
 
             UniqueWindow createWindow(const int& a_windowWidth = 480, const int& a_windowHeight = 480);
             vk::UniqueSurfaceKHR createSurface();
@@ -33,6 +33,8 @@ namespace vlb {
             bool isSurfaceSupported(const vk::UniqueSurfaceKHR& a_surface);
             vk::UniqueSwapchainKHR createSwapchain();
             void createSwapchainResourses();
+            void createDrawCommandBuffers();
+            void createSyncObjects();
             virtual void draw() = 0;
 
         protected:
@@ -42,10 +44,20 @@ namespace vlb {
             uint32_t             m_windowWidth;
             uint32_t             m_windowHeight;
 
+            std::vector<vk::UniqueCommandBuffer> drawCommandBuffers{};
+            std::vector<vk::Image>               swapChainImages{};
+
+            const int maxFramesInFlight = 2;
+            std::vector<vk::UniqueSemaphore> imageAvailableSemaphores;
+            std::vector<vk::UniqueSemaphore> renderFinishedSemaphores;
+            std::vector<vk::UniqueFence> inFlightFences;
+            std::vector<vk::UniqueFence> imagesInFlight;
+
+            size_t currentFrame = 0;
+
         public:
 
             Renderer();
-            ~Renderer();
             void render();
     };
 

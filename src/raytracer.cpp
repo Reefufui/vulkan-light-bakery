@@ -292,79 +292,6 @@ namespace vlb {
         m_device.destroy(instancesBuffer.buffer);
     }
 
-    // TODO: move this function somewhere else
-    void setImageLayout(
-            vk::CommandBuffer cmdbuffer,
-            vk::Image image,
-            vk::ImageLayout oldImageLayout,
-            vk::ImageLayout newImageLayout,
-            vk::ImageSubresourceRange subresourceRange,
-            vk::PipelineStageFlags srcStageMask = vk::PipelineStageFlagBits::eAllCommands,
-            vk::PipelineStageFlags dstStageMask = vk::PipelineStageFlagBits::eAllCommands)
-    {
-        vk::ImageMemoryBarrier imageMemoryBarrier{};
-        imageMemoryBarrier
-            .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
-            .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
-            .setImage(image)
-            .setOldLayout(oldImageLayout)
-            .setNewLayout(newImageLayout)
-            .setSubresourceRange(subresourceRange);
-
-        // Source layouts (old)
-        switch (oldImageLayout) {
-            case vk::ImageLayout::eUndefined:
-                imageMemoryBarrier.srcAccessMask = {};
-                break;
-            case vk::ImageLayout::ePreinitialized:
-                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite;
-                break;
-            case vk::ImageLayout::eColorAttachmentOptimal:
-                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-                break;
-            case vk::ImageLayout::eDepthStencilAttachmentOptimal:
-                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
-                break;
-            case vk::ImageLayout::eTransferSrcOptimal:
-                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-                break;
-            case vk::ImageLayout::eTransferDstOptimal:
-                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-                break;
-            case vk::ImageLayout::eShaderReadOnlyOptimal:
-                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
-                break;
-            default:
-                break;
-        }
-
-        // Target layouts (new)
-        switch (newImageLayout) {
-            case vk::ImageLayout::eTransferDstOptimal:
-                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-                break;
-            case vk::ImageLayout::eTransferSrcOptimal:
-                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-                break;
-            case vk::ImageLayout::eColorAttachmentOptimal:
-                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-                break;
-            case vk::ImageLayout::eDepthStencilAttachmentOptimal:
-                imageMemoryBarrier.dstAccessMask = imageMemoryBarrier.dstAccessMask | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
-                break;
-            case vk::ImageLayout::eShaderReadOnlyOptimal:
-                if (imageMemoryBarrier.srcAccessMask == vk::AccessFlags{}) {
-                    imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eTransferWrite;
-                }
-                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-                break;
-            default:
-                break;
-        }
-
-        cmdbuffer.pipelineBarrier(srcStageMask, dstStageMask, {}, {}, {}, imageMemoryBarrier);
-    }
-
     void Raytracer::createStorageImage()
     {
         vk::ImageCreateInfo imageInfo{};
@@ -409,7 +336,7 @@ namespace vlb {
         this->m_rayGenStorage.imageView = this->m_device.createImageViewUnique(imageViewInfo);
 
         vk::CommandBuffer commandBuffer = recordCommandBuffer();
-        setImageLayout(commandBuffer, this->m_rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
+        Application::setImageLayout(commandBuffer, this->m_rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
                 { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
         flushCommandBuffer(commandBuffer, this->m_graphicsQueue);
     }
@@ -506,7 +433,7 @@ namespace vlb {
             .setStages(shaderStages)
             .setGroups(shaderGroups)
             .setMaxPipelineRayRecursionDepth(1)
-            .setLayout(pipelineLayout.get())
+            .setLayout(this->pipelineLayout.get())
         );
 
         if (result != vk::Result::eSuccess)
@@ -566,7 +493,7 @@ namespace vlb {
             {vk::DescriptorType::eStorageImage, 1}
         };
 
-        auto descriptorPool = this->m_device.createDescriptorPoolUnique(
+        this->descriptorPool = this->m_device.createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
                 .setMaxSets(1)
@@ -575,10 +502,10 @@ namespace vlb {
 
         auto descriptorSets = this->m_device.allocateDescriptorSetsUnique(
                 vk::DescriptorSetAllocateInfo{}
-                .setDescriptorPool(descriptorPool.get())
+                .setDescriptorPool(this->descriptorPool.get())
                 .setSetLayouts(descriptorSetLayout.get())
                 );
-        auto descriptorSet = std::move(descriptorSets.front());
+        this->descriptorSet = std::move(descriptorSets.front());
 
         vk::WriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo{};
         descriptorAccelerationStructureInfo
@@ -586,7 +513,7 @@ namespace vlb {
 
         vk::WriteDescriptorSet accelerationStructureWrite{};
         accelerationStructureWrite
-            .setDstSet(descriptorSet.get())
+            .setDstSet(this->descriptorSet.get())
             .setDstBinding(0)
             .setDescriptorCount(1)
             .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
@@ -599,7 +526,7 @@ namespace vlb {
 
         vk::WriteDescriptorSet resultImageWrite{};
         resultImageWrite
-            .setDstSet(descriptorSet.get())
+            .setDstSet(this->descriptorSet.get())
             .setDescriptorType(vk::DescriptorType::eStorageImage)
             .setDstBinding(1)
             .setImageInfo(imageDescriptor);
@@ -607,9 +534,70 @@ namespace vlb {
         this->m_device.updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
     }
 
-    void Raytracer::buildCommandBuffers()
+    void Raytracer::recordDrawCommandBuffers()
     {
-        //TODO
+        vk::ImageSubresourceRange subresourceRange{};
+        subresourceRange
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setBaseMipLevel(0)
+            .setLevelCount(1)
+            .setBaseArrayLayer(0)
+            .setLayerCount(1);
+
+        for (int32_t i = 0; i < drawCommandBuffers.size(); ++i)
+        {
+            auto& commandBuffer  = drawCommandBuffers[i];
+            auto& swapChainImage = this->swapChainImages[i];
+
+            commandBuffer->begin(vk::CommandBufferBeginInfo{});
+
+            commandBuffer->bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, this->pipeline.get());
+
+            commandBuffer->bindDescriptorSets(
+                    vk::PipelineBindPoint::eRayTracingKHR,
+                    this->pipelineLayout.get(),
+                    0,
+                    this->descriptorSet.get(),
+                    nullptr
+                    );
+
+            commandBuffer->traceRaysKHR(
+                    this->sbt.entries["rayGen"],
+                    this->sbt.entries["miss"],
+                    this->sbt.entries["hit"],
+                    {},
+                    this->m_windowWidth, this->m_windowHeight, 1
+                    );
+
+            Application::setImageLayout(commandBuffer.get(), this->m_rayGenStorage.handle.get(),
+                    vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal, subresourceRange);
+
+            Application::setImageLayout(commandBuffer.get(), swapChainImage,
+                    vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, subresourceRange);
+
+            commandBuffer->copyImage(
+                    this->m_rayGenStorage.handle.get(),
+                    vk::ImageLayout::eTransferSrcOptimal,
+
+                    swapChainImage,
+                    vk::ImageLayout::eTransferDstOptimal,
+
+                    vk::ImageCopy{}
+                    .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                    .setSrcOffset({ 0, 0, 0 })
+                    .setDstSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                    .setDstOffset({ 0, 0, 0 })
+                    .setExtent({ this->m_windowWidth, this->m_windowHeight, 1 })
+                    );
+
+            Application::setImageLayout(commandBuffer.get(), this->m_rayGenStorage.handle.get(),
+                    vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral, subresourceRange);
+
+            Application::setImageLayout(commandBuffer.get(), swapChainImage,
+                    vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, subresourceRange);
+
+            commandBuffer->end();
+        }
     }
 
     void Raytracer::draw()
@@ -625,6 +613,7 @@ namespace vlb {
         createRayTracingPipeline();
         createShaderBindingTable();
         createDescriptorSets();
+        recordDrawCommandBuffers();
     }
 
     // TODO(on abstraction stage): unique handles for vulkan objects to clear up this mess in destructor :)
