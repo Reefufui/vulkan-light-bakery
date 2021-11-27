@@ -33,6 +33,9 @@ namespace vlb {
             virtual void draw() = 0;
             const int maxFramesInFlight = 2;
 
+            void imguiInit();
+            vk::UniqueDescriptorPool imguiPool;
+
         protected:
             vk::Queue            graphicsQueue;
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};

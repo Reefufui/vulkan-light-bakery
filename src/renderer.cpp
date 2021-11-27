@@ -2,6 +2,10 @@
 
 #include "renderer.hpp"
 
+#include <imgui.h>
+//#include <imgui_impl_glfw.h>
+//#include <imgui_impl_vulkan.h>
+
 namespace vlb {
 
     Renderer::UniqueWindow Renderer::createWindow(const int& windowWidth, const int& windowHeight)
@@ -187,6 +191,39 @@ namespace vlb {
         this->device.waitIdle();
     }
 
+    void Renderer::imguiInit()
+    {
+        const int maxSets = 1000;
+
+        std::vector<vk::DescriptorPoolSize> poolSizes =
+        {
+            { vk::DescriptorType::eSampler, maxSets },
+            { vk::DescriptorType::eCombinedImageSampler, maxSets },
+            { vk::DescriptorType::eSampledImage, maxSets },
+            { vk::DescriptorType::eStorageImage, maxSets },
+
+            { vk::DescriptorType::eUniformTexelBuffer, maxSets },
+            { vk::DescriptorType::eStorageTexelBuffer, maxSets },
+            { vk::DescriptorType::eUniformBuffer, maxSets },
+            { vk::DescriptorType::eStorageBuffer, maxSets },
+            { vk::DescriptorType::eUniformBufferDynamic, maxSets },
+            { vk::DescriptorType::eStorageBufferDynamic, maxSets },
+
+            { vk::DescriptorType::eInputAttachment, maxSets }
+        };
+
+
+        this->imguiPool = this->device.createDescriptorPoolUnique(
+                vk::DescriptorPoolCreateInfo{}
+                .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
+                .setMaxSets(maxSets)
+                .setPoolSizes(poolSizes)
+                );
+
+        ImGui::CreateContext();
+        ImGui_ImplGlfw_InitForVulkan(this->window.get());
+    }
+
     Renderer::Renderer()
     {
         glfwInit();
@@ -201,6 +238,8 @@ namespace vlb {
         createSwapchainResourses();
         createDrawCommandBuffers();
         createSyncObjects();
+
+        imguiInit();
 
         this->graphicsQueue = this->device.getQueue(getQueueFamilyIndex(), 0);
     }
