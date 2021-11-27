@@ -4,16 +4,16 @@
 
 namespace vlb {
 
-    Renderer::UniqueWindow Renderer::createWindow(const int& a_windowWidth, const int& a_windowHeight)
+    Renderer::UniqueWindow Renderer::createWindow(const int& windowWidth, const int& windowHeight)
     {
-        assert(a_windowWidth > 0 && a_windowHeight > 0);
-        m_windowWidth  = static_cast<uint32_t>(a_windowWidth);
-        m_windowHeight = static_cast<uint32_t>(a_windowHeight);
+        assert(windowWidth > 0 && windowHeight > 0);
+        this->windowWidth  = static_cast<uint32_t>(windowWidth);
+        this->windowHeight = static_cast<uint32_t>(windowHeight);
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-        auto glfwWindow = glfwCreateWindow(m_windowWidth, m_windowHeight, "Vulkan", nullptr, nullptr);
+        auto glfwWindow = glfwCreateWindow(this->windowWidth, this->windowHeight, "Vulkan", nullptr, nullptr);
         std::unique_ptr<GLFWwindow, WindowDestroy> window(glfwWindow);
         return window;
     }
@@ -21,12 +21,12 @@ namespace vlb {
     vk::UniqueSurfaceKHR Renderer::createSurface()
     {
         VkSurfaceKHR tmpSurface;
-        VkResult res = glfwCreateWindowSurface(m_instance, m_window.get(), nullptr, &tmpSurface);
+        VkResult res = glfwCreateWindowSurface(this->instance, this->window.get(), nullptr, &tmpSurface);
         if (res)
         {
             throw std::runtime_error("failed to create window surface");
         }
-        vk::ObjectDestroy<vk::Instance, vk::DispatchLoaderDynamic> surfaceDeleter(m_instance);
+        vk::ObjectDestroy<vk::Instance, vk::DispatchLoaderDynamic> surfaceDeleter(this->instance);
 
         auto surface = vk::UniqueSurfaceKHR(tmpSurface, surfaceDeleter);
 
@@ -43,80 +43,17 @@ namespace vlb {
         return vk::QueueFlagBits::eGraphics;
     }
 
-    bool Renderer::isSurfaceSupported(const vk::UniqueSurfaceKHR& a_surface)
+    bool Renderer::isSurfaceSupported(const vk::UniqueSurfaceKHR& surface)
     {
-        assert(a_surface);
-        return m_physicalDevice.getSurfaceSupportKHR(getQueueFamilyIndex(), *a_surface);
+        assert(surface);
+        return this->physicalDevice.getSurfaceSupportKHR(getQueueFamilyIndex(), *surface);
     }
 
     vk::UniqueSwapchainKHR Renderer::createSwapchain()
     {
-        vk::SurfaceCapabilitiesKHR capabilities = m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface.get());
-
-        uint32_t formatCount;
-        if (m_physicalDevice.getSurfaceFormatsKHR(m_surface.get(), &formatCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch surface formats");
-        }
-        assert(formatCount);
-
-        std::vector<vk::SurfaceFormatKHR> availableFormats(formatCount);
-
-        if (m_physicalDevice.getSurfaceFormatsKHR(m_surface.get(), &formatCount, availableFormats.data()) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch surface formats");
-        }
-
-        uint32_t presentModeCount;
-        if (m_physicalDevice.getSurfacePresentModesKHR(m_surface.get(), &presentModeCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch present modes");
-        }
-        assert(presentModeCount);
-
-        std::vector<vk::PresentModeKHR> availablePresentModes(presentModeCount);
-
-        if (m_physicalDevice.getSurfacePresentModesKHR(m_surface.get(), &presentModeCount, availablePresentModes.data())
-                != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch present modes");
-        }
-
-        auto compareFormats = [&](const vk::SurfaceFormatKHR& a_surfaceFormat)
-        {
-            return a_surfaceFormat == m_surfaceFormat;
-        };
-
-        if (std::find_if(availableFormats.begin(), availableFormats.end(), compareFormats) == availableFormats.end())
-        {
-            throw std::runtime_error("surface format not found");
-        }
-
-        vk::PresentModeKHR presentMode{};
-
-        auto comparePresentModes = [&](const vk::PresentModeKHR& a_presentMode)
-        {
-            if (a_presentMode == vk::PresentModeKHR::eMailbox)
-            {
-                presentMode = vk::PresentModeKHR::eMailbox;
-                return true;
-            }
-            else if (a_presentMode == vk::PresentModeKHR::eImmediate)
-            {
-                presentMode = vk::PresentModeKHR::eImmediate;
-                return true;
-            }
-
-            return false;
-        };
-
-        if (std::find_if(availablePresentModes.begin(), availablePresentModes.end(), comparePresentModes)
-                == availablePresentModes.end())
-        {
-            presentMode = vk::PresentModeKHR::eFifo;
-        }
-
         vk::Extent2D extent{};
+
+        vk::SurfaceCapabilitiesKHR capabilities = this->physicalDevice.getSurfaceCapabilitiesKHR(this->surface.get());
 
         if (capabilities.currentExtent.width != UINT32_MAX)
         {
@@ -124,8 +61,8 @@ namespace vlb {
         }
         else
         {
-            extent.width  = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, m_windowWidth));
-            extent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, m_windowHeight));
+            extent.width  = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, this->windowWidth));
+            extent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, this->windowHeight));
         }
 
         uint32_t imageCount = capabilities.minImageCount + 1;
@@ -136,23 +73,25 @@ namespace vlb {
         }
 
         vk::SwapchainCreateInfoKHR createInfo{};
-        createInfo.surface          = m_surface.get();
-        createInfo.minImageCount    = imageCount;
-        createInfo.imageFormat      = m_surfaceFormat.format;
-        createInfo.imageColorSpace  = m_surfaceFormat.colorSpace;
-        createInfo.imageExtent      = extent;
-        createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage       = vk::ImageUsageFlagBits::eColorAttachment;
-        createInfo.imageSharingMode = vk::SharingMode::eExclusive;
-        createInfo.preTransform     = capabilities.currentTransform;
-        createInfo.compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-        createInfo.presentMode      = presentMode;
-        createInfo.clipped          = VK_TRUE;
-        createInfo.oldSwapchain     = nullptr;
+        createInfo
+            .setSurface(this->surface.get())
+            .setMinImageCount(imageCount)
+            .setImageFormat(this->surfaceFormat)
+            .setImageColorSpace(this->surfaceColorSpace)
+            .setImageExtent(extent)
+            .setImageArrayLayers(1)
+            .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst)
+            .setImageSharingMode(vk::SharingMode::eExclusive)
+            .setQueueFamilyIndices(nullptr)
+            .setPreTransform(capabilities.currentTransform)
+            .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
+            .setPresentMode(vk::PresentModeKHR::eFifo)
+            .setClipped(VK_TRUE)
+            .setOldSwapchain(nullptr);
 
-        vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> swapchainDeleter(m_device);
+        vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> swapchainDeleter(this->device);
         vk::SwapchainKHR swapChain{};
-        if (m_device.createSwapchainKHR(&createInfo, nullptr, &swapChain) != vk::Result::eSuccess)
+        if (this->device.createSwapchainKHR(&createInfo, nullptr, &swapChain) != vk::Result::eSuccess)
         {
             throw std::runtime_error("failed to create swapchain");
         }
@@ -162,26 +101,15 @@ namespace vlb {
 
     void Renderer::createSwapchainResourses()
     {
-        uint32_t imageCount{};
+        this->swapChainImages = this->device.getSwapchainImagesKHR(this->swapchain.get());
+        uint32_t imageCount = this->swapChainImages.size();
 
-        if (m_device.getSwapchainImagesKHR(m_swapchain.get(), &imageCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch swapchain images");
-        }
-
-        m_swapchainImages.resize(imageCount);
-
-        if (m_device.getSwapchainImagesKHR(m_swapchain.get(), &imageCount, m_swapchainImages.data()) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch swapchain images");
-        }
-
-        m_swapchainImageViews.resize(imageCount);
-        vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> imageViewDeleter(m_device);
+        this->swapchainImageViews.resize(imageCount);
+        vk::ObjectDestroy<vk::Device, vk::DispatchLoaderDynamic> imageViewDeleter(this->device);
 
         vk::ImageViewCreateInfo createInfo{};
         createInfo.viewType     = vk::ImageViewType::e2D;
-        createInfo.format       = m_surfaceFormat.format;
+        createInfo.format       = this->surfaceFormat;
         createInfo.components.r = vk::ComponentSwizzle::eIdentity;
         createInfo.components.g = vk::ComponentSwizzle::eIdentity;
         createInfo.components.b = vk::ComponentSwizzle::eIdentity;
@@ -193,12 +121,12 @@ namespace vlb {
         createInfo.subresourceRange.layerCount     = 1;
 
         size_t i{};
-        for (auto& uniqueImageView : m_swapchainImageViews)
+        for (auto& uniqueImageView : this->swapchainImageViews)
         {
-            createInfo.image        = m_swapchainImages[i++];
+            createInfo.image        = swapChainImages[i++];
 
             vk::ImageView imageView{};
-            if (m_device.createImageView(&createInfo, nullptr, &imageView) != vk::Result::eSuccess)
+            if (this->device.createImageView(&createInfo, nullptr, &imageView) != vk::Result::eSuccess)
             {
                 throw std::runtime_error("failed to create image views for swapchain");
             }
@@ -207,37 +135,82 @@ namespace vlb {
         }
     }
 
+    std::vector<vk::UniqueCommandBuffer> Renderer::createDrawCommandBuffers()
+    {
+        return this->device.allocateCommandBuffersUnique(
+                vk::CommandBufferAllocateInfo{}
+                .setCommandPool(this->commandPool)
+                .setLevel(vk::CommandBufferLevel::ePrimary)
+                .setCommandBufferCount(this->swapChainImages.size())
+                );
+    }
+
+    void Renderer::createSyncObjects()
+    {
+        imageAvailableSemaphores.resize(this->maxFramesInFlight);
+        renderFinishedSemaphores.resize(this->maxFramesInFlight);
+        inFlightFences.resize(this->maxFramesInFlight);
+        this->imagesInFlight.resize(this->swapChainImages.size());
+
+        for (size_t i = 0; i < this->maxFramesInFlight; i++) {
+            imageAvailableSemaphores[i] = this->device.createSemaphoreUnique({});
+            renderFinishedSemaphores[i] = this->device.createSemaphoreUnique({});
+            inFlightFences[i] = this->device.createFence({ vk::FenceCreateFlagBits::eSignaled });
+        }
+    }
+
+    void Renderer::present(uint32_t imageIndex)
+    {
+        auto result = this->graphicsQueue.presentKHR(
+                vk::PresentInfoKHR{}
+                .setWaitSemaphores(this->renderFinishedSemaphores[this->currentFrame].get())
+                .setSwapchains(this->swapchain.get())
+                .setImageIndices(imageIndex)
+                );
+
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to present image");
+        }
+    }
+
     void Renderer::render()
     {
-        m_swapchain = createSwapchain();
-        createSwapchainResourses();
-
-        while (!glfwWindowShouldClose(m_window.get()))
+        while (!glfwWindowShouldClose(this->window.get()))
         {
             glfwPollEvents();
             draw();
+
+            this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
         }
 
-        m_device.waitIdle();
+        this->device.waitIdle();
     }
 
     Renderer::Renderer()
     {
         glfwInit();
-        pushPresentationExtensions();
-        createInstance();
-        createDevice();
-        createCommandPool();
+        Application::pushPresentationExtensions();
+        Application::createInstance();
+        Application::createDevice();
+        Application::createCommandPool();
 
-        m_window  = createWindow();
-        m_surface = createSurface();
-        m_graphicsQueue = m_device.getQueue(getQueueFamilyIndex(), 0);
-        m_presentQueue  = m_device.getQueue(getQueueFamilyIndex(), 0);
+        this->window  = createWindow(1920, 1080);
+        this->surface = createSurface();
+        this->swapchain = createSwapchain();
+        createSwapchainResourses();
+        createDrawCommandBuffers();
+        createSyncObjects();
+
+        this->graphicsQueue = this->device.getQueue(getQueueFamilyIndex(), 0);
     }
 
     Renderer::~Renderer()
     {
-        glfwTerminate();
+        for (size_t i = 0; i < this->maxFramesInFlight; ++i)
+        {
+            this->device.destroy(this->inFlightFences[i]);
+        }
     }
 
 }

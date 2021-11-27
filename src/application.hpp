@@ -24,12 +24,12 @@ namespace vlb {
     {
         protected:
 
-            vk::Instance       m_instance;
-            vk::PhysicalDevice m_physicalDevice;
-            vk::Device         m_device;
-            vk::CommandPool    m_commandPool;
+            vk::Instance       instance;
+            vk::PhysicalDevice physicalDevice;
+            vk::Device         device;
+            vk::CommandPool    commandPool;
 
-            vk::DynamicLoader  m_dl;
+            vk::DynamicLoader  dl;
 
             void pushPresentationExtensions();
             void initDebugReportCallback();
@@ -38,19 +38,52 @@ namespace vlb {
             uint32_t getQueueFamilyIndex();
 
             void createInstance();
-            void createDevice(size_t a_physicalDeviceIdx = 0);
+            void createDevice(size_t physicalDeviceIdx = 0);
+
+            vk::PhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+            uint32_t getMemoryType(const vk::MemoryRequirements& memoryRequiriments, const vk::MemoryPropertyFlags memoryProperties);
+
+            void setImageLayout(
+                    vk::CommandBuffer cmdbuffer,
+                    vk::Image image,
+                    vk::ImageLayout oldImageLayout,
+                    vk::ImageLayout newImageLayout,
+                    vk::ImageSubresourceRange subresourceRange,
+                    vk::PipelineStageFlags srcStageMask = vk::PipelineStageFlagBits::eAllCommands,
+                    vk::PipelineStageFlags dstStageMask = vk::PipelineStageFlagBits::eAllCommands);
+
             void createCommandPool();
+            vk::CommandBuffer recordCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue);
+
+            vk::UniqueShaderModule createShaderModule(const std::string& filename);
+
+            struct Buffer
+            {
+                vk::UniqueBuffer         handle;
+                vk::UniqueDeviceMemory   memory;
+                vk::DeviceAddress        deviceAddress;
+            };
+
+            struct Image
+            {
+                vk::UniqueImage        handle;
+                vk::UniqueDeviceMemory memory;
+                vk::UniqueImageView    imageView;
+            };
+
+            Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data = nullptr);
 
         private:
 
-            vk::DebugUtilsMessengerEXT m_debugMessenger;
-            std::vector<const char*> m_instanceLayers;
-            std::vector<const char*> m_instanceExtensions;
-            std::vector<const char*> m_deviceLayers;
-            std::vector<const char*> m_deviceExtensions;
+            vk::DebugUtilsMessengerEXT debugMessenger;
+            std::vector<const char*> instanceLayers;
+            std::vector<const char*> instanceExtensions;
+            std::vector<const char*> deviceLayers;
+            std::vector<const char*> deviceExtensions;
 
-            void checkValidationLayers(const std::vector<const char*>& a_layersToCheck);
-            void checkExtensions(const std::vector<const char*>& a_extensionsToCheck);
+            void checkValidationLayers(const std::vector<const char*>& layersToCheck);
+            void checkExtensions(const std::vector<const char*>& xtensionsToCheck);
 
         public:
 

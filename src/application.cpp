@@ -2,6 +2,8 @@
 
 #include "application.hpp"
 
+#include <fstream>
+
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace vlb {
@@ -30,7 +32,7 @@ namespace vlb {
             VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
             VkDebugUtilsMessageTypeFlagsEXT             messageTypes,
             VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
-            void * /*pUserData*/ )
+            void *)
     {
         std::ostringstream message{};
 
@@ -83,39 +85,30 @@ namespace vlb {
         const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
         for (uint32_t i{}; i < glfwExtensionsCount; ++i)
         {
-            m_instanceExtensions.push_back(static_cast<const char*>(glfwExtensions[i]));
+            this->instanceExtensions.push_back(static_cast<const char*>(glfwExtensions[i]));
         }
 
-        m_deviceExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
-        m_deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+        this->deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
 
     void Application::initDebugReportCallback()
     {
-        assert(m_instance);
+        assert(this->instance);
 
         pfnVkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-                m_instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));
-
-        if (!pfnVkCreateDebugUtilsMessengerEXT)
-        {
-            std::cerr << "GetInstanceProcAddr: Unable to find pfnVkCreateDebugUtilsMessengerEXT function." << std::endl;
-            exit(1);
-        }
+                this->instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));
+        assert(pfnVkCreateDebugUtilsMessengerEXT);
 
         pfnVkDestroyDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-                m_instance.getProcAddr( "vkDestroyDebugUtilsMessengerEXT" ) );
-        if (!pfnVkDestroyDebugUtilsMessengerEXT)
-        {
-            std::cerr << "GetInstanceProcAddr: Unable to find pfnVkDestroyDebugUtilsMessengerEXT function." << std::endl;
-            exit(1);
-        }
+                this->instance.getProcAddr( "vkDestroyDebugUtilsMessengerEXT" ) );
+        assert(pfnVkDestroyDebugUtilsMessengerEXT);
 
         vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
                 | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
@@ -123,67 +116,56 @@ namespace vlb {
                 | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
                 | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 
-        m_debugMessenger = m_instance.createDebugUtilsMessengerEXT(
+        this->debugMessenger = this->instance.createDebugUtilsMessengerEXT(
                 vk::DebugUtilsMessengerCreateInfoEXT({}, severityFlags, messageTypeFlags, &debugMessageFunc));
     }
 
-    void Application::createDevice(size_t a_physicalDeviceIdx)
+    void Application::createDevice(size_t physicalDeviceIdx)
     {
-        assert(m_instance);
+        assert(this->instance);
 
-        uint32_t deviceCount{};
-        if (m_instance.enumeratePhysicalDevices(&deviceCount, nullptr) != vk::Result::eSuccess || !deviceCount)
-        {
-            throw std::runtime_error("no devices found");
-        }
+        std::vector<vk::PhysicalDevice> devices = this->instance.enumeratePhysicalDevices();
+        assert(devices.size());
+        this->physicalDevice = devices[physicalDeviceIdx];
+        this->physicalDeviceMemoryProperties = this->physicalDevice.getMemoryProperties();
 
-        std::vector<vk::PhysicalDevice> devices(deviceCount);
-        if (m_instance.enumeratePhysicalDevices(&deviceCount, devices.data()) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch devices");
-        }
-
-        assert(a_physicalDeviceIdx < deviceCount);
-        m_physicalDevice = devices[a_physicalDeviceIdx];
-
+        float queuePriorities = 1.f;
         vk::DeviceQueueCreateInfo queueCreateInfo{};
-        queueCreateInfo.queueFamilyIndex = getQueueFamilyIndex();
-        queueCreateInfo.queueCount       = 1;
-        float queuePriorities            = 1.f;
-        queueCreateInfo.pQueuePriorities = &queuePriorities;
+        queueCreateInfo
+            .setQueueFamilyIndex(getQueueFamilyIndex())
+            .setQueueCount(1)
+            .setPQueuePriorities(&queuePriorities);
 
         vk::DeviceCreateInfo deviceCreateInfo{};
-        deviceCreateInfo.pQueueCreateInfos    = &queueCreateInfo;
-        deviceCreateInfo.queueCreateInfoCount = 1;
-        deviceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(m_deviceExtensions.size());
-        deviceCreateInfo.ppEnabledExtensionNames = m_deviceExtensions.data();
+        deviceCreateInfo
+            .setQueueCreateInfos(queueCreateInfo)
+            .setPEnabledExtensionNames(this->deviceExtensions)
+            .setPEnabledLayerNames(this->deviceLayers);
 
         auto c = vk::StructureChain<
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
             vk::PhysicalDeviceBufferDeviceAddressFeatures,
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>{
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR>{
                 deviceCreateInfo,
                 vk::PhysicalDeviceFeatures2(),
                 vk::PhysicalDeviceBufferDeviceAddressFeatures(),
-                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR()
+                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR(),
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR()
             };
 
-        m_physicalDevice.getFeatures2(&c.get<vk::PhysicalDeviceFeatures2>());
-        m_device = m_physicalDevice.createDevice(c.get<vk::DeviceCreateInfo>());
+        this->physicalDevice.getFeatures2(&c.get<vk::PhysicalDeviceFeatures2>());
+        this->device = this->physicalDevice.createDevice(c.get<vk::DeviceCreateInfo>());
 
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(this->device);
     }
 
     uint32_t Application::getQueueFamilyIndex()
     {
-        uint32_t queueFamilyCount;
-        m_physicalDevice.getQueueFamilyProperties(&queueFamilyCount, nullptr);
-
-        std::vector<vk::QueueFamilyProperties> queueFamilies(queueFamilyCount);
-        m_physicalDevice.getQueueFamilyProperties(&queueFamilyCount, queueFamilies.data());
-
+        auto queueFamilies = this->physicalDevice.getQueueFamilyProperties();
         auto queueFlag{ getQueueFlag() };
+
         uint32_t index = 0;
         for (auto& prop : queueFamilies)
         {
@@ -194,10 +176,7 @@ namespace vlb {
             ++index;
         }
 
-        if (index == queueFamilies.size())
-        {
-            throw std::runtime_error("could not find a queue family that supports operations");
-        }
+        assert(index != queueFamilies.size());
 
         return index;
     }
@@ -205,31 +184,220 @@ namespace vlb {
     void Application::createCommandPool()
     {
         vk::CommandPoolCreateInfo poolInfo{};
-        poolInfo.flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        poolInfo.queueFamilyIndex = getQueueFamilyIndex();
+        poolInfo
+            .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
+            .setQueueFamilyIndex(getQueueFamilyIndex());
 
-        m_commandPool = m_device.createCommandPool(poolInfo, nullptr);
+        this->commandPool = this->device.createCommandPool(poolInfo, nullptr);
     }
 
-    void Application::checkValidationLayers(const std::vector<const char*>& a_layersToCheck)
+    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequiriments, const vk::MemoryPropertyFlags memoryProperties)
     {
-        uint32_t layerCount{};
-        if (vk::enumerateInstanceLayerProperties(&layerCount, nullptr) != vk::Result::eSuccess)
+        int32_t result{-1};
+        for (uint32_t i{}; i < VK_MAX_MEMORY_TYPES; ++i)
         {
-            throw std::runtime_error("0 layers found");
-        }
-        std::vector<vk::LayerProperties> availableLayers(layerCount);
-
-        if (vk::enumerateInstanceLayerProperties(&layerCount, availableLayers.data()) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to fetch layers");
-        }
-
-        auto checkValidationLayer = [&availableLayers](const char* a_wantedLayerName)
-        {
-            auto compareNames = [&a_wantedLayerName](const vk::LayerProperties& a_props)
+            if (memoryRequiriments.memoryTypeBits & (1 << i))
             {
-                return std::string(a_props.layerName) == std::string(a_wantedLayerName);
+                if ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties)
+                {
+                    result = i;
+                    break;
+                }
+            }
+        }
+        assert(result != -1);
+
+        return result;
+    }
+
+    vk::CommandBuffer Application::recordCommandBuffer(vk::CommandBufferAllocateInfo info)
+    {
+        auto passed = info == vk::CommandBufferAllocateInfo{};
+        info = passed ? vk::CommandBufferAllocateInfo(this->commandPool, vk::CommandBufferLevel::ePrimary, 1) : info;
+
+        vk::CommandBuffer cmdBuffer = this->device.allocateCommandBuffers(info).front();
+        cmdBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+        return cmdBuffer;
+    }
+
+    void Application::flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue)
+    {
+        cmdBuffer.end();
+        vk::SubmitInfo submitInfo{};
+        submitInfo
+            .setCommandBufferCount(1)
+            .setPCommandBuffers(&cmdBuffer);
+
+        vk::Fence fence = this->device.createFence(vk::FenceCreateInfo());
+        queue.submit(submitInfo, fence);
+        try {
+            auto r = this->device.waitForFences(fence, false, 1000000000);
+            if (r != vk::Result::eSuccess) std::cout << "flushing failed!\n";
+        }
+        catch (std::exception const &e)
+        {
+            std::cout << e.what() << "\n";
+        }
+
+        this->device.destroy(fence);
+        this->device.freeCommandBuffers(this->commandPool, 1, &cmdBuffer);
+    }
+
+    void Application::setImageLayout(
+            vk::CommandBuffer cmdbuffer,
+            vk::Image image,
+            vk::ImageLayout oldImageLayout,
+            vk::ImageLayout newImageLayout,
+            vk::ImageSubresourceRange subresourceRange,
+            vk::PipelineStageFlags srcStageMask,
+            vk::PipelineStageFlags dstStageMask)
+    {
+        vk::ImageMemoryBarrier imageMemoryBarrier{};
+        imageMemoryBarrier
+            .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+            .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+            .setImage(image)
+            .setOldLayout(oldImageLayout)
+            .setNewLayout(newImageLayout)
+            .setSubresourceRange(subresourceRange);
+
+        // Source layouts (old)
+        switch (oldImageLayout) {
+            case vk::ImageLayout::eUndefined:
+                imageMemoryBarrier.srcAccessMask = {};
+                break;
+            case vk::ImageLayout::ePreinitialized:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite;
+                break;
+            case vk::ImageLayout::eColorAttachmentOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+                break;
+            case vk::ImageLayout::eDepthStencilAttachmentOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+                break;
+            case vk::ImageLayout::eTransferSrcOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+                break;
+            case vk::ImageLayout::eTransferDstOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+                break;
+            case vk::ImageLayout::eShaderReadOnlyOptimal:
+                imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+                break;
+            default:
+                break;
+        }
+
+        // Target layouts (new)
+        switch (newImageLayout) {
+            case vk::ImageLayout::eTransferDstOptimal:
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+                break;
+            case vk::ImageLayout::eTransferSrcOptimal:
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+                break;
+            case vk::ImageLayout::eColorAttachmentOptimal:
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+                break;
+            case vk::ImageLayout::eDepthStencilAttachmentOptimal:
+                imageMemoryBarrier.dstAccessMask = imageMemoryBarrier.dstAccessMask | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+                break;
+            case vk::ImageLayout::eShaderReadOnlyOptimal:
+                if (imageMemoryBarrier.srcAccessMask == vk::AccessFlags{}) {
+                    imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eTransferWrite;
+                }
+                imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+                break;
+            default:
+                break;
+        }
+
+        cmdbuffer.pipelineBarrier(srcStageMask, dstStageMask, {}, {}, {}, imageMemoryBarrier);
+    }
+
+    vk::UniqueShaderModule Application::createShaderModule(const std::string& filename)
+    {
+        std::ifstream spvFile(filename, std::ios::ate | std::ios::binary);
+
+        if (!spvFile.is_open())
+        {
+            throw std::runtime_error("could not locate shader .spv file!");
+        }
+
+        auto fileSize = spvFile.tellg();
+        std::vector<char> code(fileSize);
+
+        spvFile
+            .seekg(0)
+            .read(code.data(), fileSize);
+        spvFile.close();
+
+        return this->device.createShaderModuleUnique(
+                vk::ShaderModuleCreateInfo{}
+                .setCodeSize(code.size())
+                .setPCode(reinterpret_cast<const uint32_t*>(code.data())) );
+    }
+
+    Application::Buffer Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
+    {
+        Buffer buffer{};
+        buffer.handle = this->device.createBufferUnique(
+                vk::BufferCreateInfo{}
+                .setSize(size)
+                .setUsage(usage)
+                .setQueueFamilyIndexCount(0)
+                );
+
+        auto memoryRequirements = this->device.getBufferMemoryRequirements(buffer.handle.get());
+        vk::MemoryAllocateFlagsInfo memoryFlagsInfo{};
+        if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress)
+        {
+            memoryFlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+        }
+
+        buffer.memory = this->device.allocateMemoryUnique(
+                vk::MemoryAllocateInfo{}
+                .setAllocationSize(memoryRequirements.size)
+                .setMemoryTypeIndex(Application::getMemoryType(memoryRequirements, memoryProperty))
+                .setPNext(&memoryFlagsInfo)
+                );
+        this->device.bindBufferMemory(buffer.handle.get(), buffer.memory.get(), 0);
+
+        if (data)
+        {
+            if (memoryProperty & vk::MemoryPropertyFlagBits::eHostVisible)
+            {
+                void* dataPtr = this->device.mapMemory(buffer.memory.get(), 0, size);
+                memcpy(dataPtr, data, static_cast<size_t>(size));
+                this->device.unmapMemory(buffer.memory.get());
+            }
+            else if (memoryProperty & vk::MemoryPropertyFlagBits::eDeviceLocal)
+            {
+                //TODO
+                std::cerr << "feature is not impleneted yet\n";
+            }
+            else
+            {
+                std::cerr << "do data copied to buffer!\n";
+            }
+        }
+
+        buffer.deviceAddress = this->device.getBufferAddressKHR({buffer.handle.get()});
+
+        return buffer;
+    }
+
+    void Application::checkValidationLayers(const std::vector<const char*>& layersToCheck)
+    {
+        auto availableLayers = vk::enumerateInstanceLayerProperties();
+        assert(availableLayers.size());
+
+        auto checkValidationLayer = [&availableLayers](const char* wantedLayerName)
+        {
+            auto compareNames = [&wantedLayerName](const vk::LayerProperties& props)
+            {
+                return std::string(props.layerName) == std::string(wantedLayerName);
             };
 
             if (std::find_if(availableLayers.begin(), availableLayers.end(), compareNames) == availableLayers.end())
@@ -238,28 +406,19 @@ namespace vlb {
             }
         };
 
-        std::for_each(a_layersToCheck.begin(), a_layersToCheck.end(), checkValidationLayer);
+        std::for_each(layersToCheck.begin(), layersToCheck.end(), checkValidationLayer);
     }
 
-    void Application::checkExtensions(const std::vector<const char*>& a_extensionsToCheck)
+    void Application::checkExtensions(const std::vector<const char*>& extensionsToCheck)
     {
-        uint32_t extensionCount;
-        if (vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("0 extensions found");
-        }
+        auto availableExtensions = vk::enumerateInstanceExtensionProperties();
+        assert(availableExtensions.size());
 
-        std::vector<vk::ExtensionProperties> availableExtensions(extensionCount);
-        if (vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, availableExtensions.data()) != vk::Result::eSuccess)
+        auto checkExtension = [&availableExtensions](const char* wantedExtensionName)
         {
-            throw std::runtime_error("failed to fetch extensions");
-        }
-
-        auto checkExtension = [&availableExtensions](const char* a_wantedExtensionName)
-        {
-            auto compareNames = [&a_wantedExtensionName](const vk::ExtensionProperties& a_props)
+            auto compareNames = [&wantedExtensionName](const vk::ExtensionProperties& props)
             {
-                return std::string(a_props.extensionName) == std::string(a_wantedExtensionName);
+                return std::string(props.extensionName) == std::string(wantedExtensionName);
             };
 
             if (std::find_if(availableExtensions.begin(), availableExtensions.end(), compareNames) == availableExtensions.end())
@@ -268,44 +427,42 @@ namespace vlb {
             }
         };
 
-        std::for_each(a_extensionsToCheck.begin(), a_extensionsToCheck.end(), checkExtension);
+        std::for_each(extensionsToCheck.begin(), extensionsToCheck.end(), checkExtension);
     }
 
     Application::Application()
     {
-        static int instance{1};
-        assert(instance-- && "[Application::Application()]: single instance allowed");
-
 #ifdef DEBUG
-        m_instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
-        m_instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-        m_instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        this->instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
+        this->instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+        this->instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
+        // TODO: create instance and devices here
     }
 
     Application::~Application()
     {
-        m_device.destroyCommandPool(m_commandPool);
-        m_device.destroy();
-        m_instance.destroyDebugUtilsMessengerEXT(m_debugMessenger);
-        m_instance.destroy();
+        this->device.destroy(this->commandPool);
+        this->device.destroy();
+        this->instance.destroyDebugUtilsMessengerEXT(this->debugMessenger);
+        this->instance.destroy();
     }
 
     void Application::createInstance()
     {
         // https://github.com/KhronosGroup/Vulkan-Hpp#extensions--per-device-function-pointers
-        PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = m_dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = this->dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
         VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
-        checkValidationLayers(m_instanceLayers);
-        checkExtensions(m_instanceExtensions);
-        vk::ApplicationInfo applicationInfo("Vulkan", 1, "Asama", 1, VK_API_VERSION_1_1);
+        checkValidationLayers(this->instanceLayers);
+        checkExtensions(this->instanceExtensions);
+        vk::ApplicationInfo applicationInfo("Vulkan Light Bakery", 1, "Asama", 1, VK_API_VERSION_1_2);
         vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(), &applicationInfo,
-                uint32_t(m_instanceLayers.size()), m_instanceLayers.data(),
-                uint32_t(m_instanceExtensions.size()), m_instanceExtensions.data());
-        m_instance = vk::createInstance(instanceCreateInfo);
+                uint32_t(this->instanceLayers.size()), this->instanceLayers.data(),
+                uint32_t(this->instanceExtensions.size()), this->instanceExtensions.data());
+        this->instance = vk::createInstance(instanceCreateInfo);
 
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(this->instance);
 
 #ifdef DEBUG
         initDebugReportCallback();
