@@ -20,13 +20,13 @@ namespace vlb {
             };
 
             typedef std::unique_ptr<GLFWwindow, WindowDestroy> UniqueWindow;
-            UniqueWindow         m_window;
-            vk::UniqueSurfaceKHR m_surface;
+            UniqueWindow         window;
+            vk::UniqueSurfaceKHR surface;
 
-            UniqueWindow createWindow(const int& a_windowWidth = 480, const int& a_windowHeight = 480);
+            UniqueWindow createWindow(const int& windowWidth = 480, const int& windowHeight = 480);
             vk::UniqueSurfaceKHR createSurface();
             vk::QueueFlagBits getQueueFlag() override;
-            bool isSurfaceSupported(const vk::UniqueSurfaceKHR& a_surface);
+            bool isSurfaceSupported(const vk::UniqueSurfaceKHR& surface);
             vk::UniqueSwapchainKHR createSwapchain();
             void createSwapchainResourses();
             void createSyncObjects();
@@ -34,20 +34,20 @@ namespace vlb {
             const int maxFramesInFlight = 2;
 
         protected:
-            vk::Queue            m_graphicsQueue;
+            vk::Queue            graphicsQueue;
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
             vk::ColorSpaceKHR    surfaceColorSpace{vk::ColorSpaceKHR::eSrgbNonlinear};
             //TODO: change to vk::Extent
-            uint32_t             m_windowWidth;
-            uint32_t             m_windowHeight;
+            uint32_t             windowWidth;
+            uint32_t             windowHeight;
 
             std::vector<vk::UniqueSemaphore> imageAvailableSemaphores;
             std::vector<vk::UniqueSemaphore> renderFinishedSemaphores;
             std::vector<vk::Fence> inFlightFences;
             std::vector<vk::Fence> imagesInFlight;
 
-            vk::UniqueSwapchainKHR m_swapchain;
-            std::vector<vk::UniqueImageView> m_swapchainImageViews;
+            vk::UniqueSwapchainKHR swapchain;
+            std::vector<vk::UniqueImageView> swapchainImageViews;
             std::vector<vk::Image> swapChainImages{};
             std::vector<vk::UniqueCommandBuffer> createDrawCommandBuffers();
             void present(uint32_t imageIndex);

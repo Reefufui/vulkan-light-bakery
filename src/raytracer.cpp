@@ -4,7 +4,6 @@
 
 namespace vlb {
 
-    // TODO: abstract this AS classes
     void Raytracer::createBLAS()
     {
         /////////////////////////
@@ -57,7 +56,7 @@ namespace vlb {
             .setGeometries(geometry);
 
         const uint32_t primitiveCount = 1;
-        auto buildSizesInfo = this->m_device.getAccelerationStructureBuildSizesKHR(
+        auto buildSizesInfo = this->device.getAccelerationStructureBuildSizesKHR(
             vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
 
         bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
@@ -65,7 +64,7 @@ namespace vlb {
 
         this->blas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
 
-        this->blas.handle = this->m_device.createAccelerationStructureKHRUnique(
+        this->blas.handle = this->device.createAccelerationStructureKHRUnique(
             vk::AccelerationStructureCreateInfoKHR{}
             .setBuffer(this->blas.buffer.handle.get())
             .setSize(buildSizesInfo.accelerationStructureSize)
@@ -94,9 +93,9 @@ namespace vlb {
 
         auto commandBuffer = Application::recordCommandBuffer();
         commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
-        flushCommandBuffer(commandBuffer, this->m_graphicsQueue);
+        flushCommandBuffer(commandBuffer, this->graphicsQueue);
 
-        this->blas.buffer.deviceAddress = this->m_device.getAccelerationStructureAddressKHR({ this->blas.handle.get() });
+        this->blas.buffer.deviceAddress = this->device.getAccelerationStructureAddressKHR({ this->blas.handle.get() });
     }
 
     void Raytracer::createTLAS()
@@ -140,7 +139,7 @@ namespace vlb {
             .setGeometries(geometry);
 
         const uint32_t primitiveCount = 1;
-        auto buildSizesInfo = this->m_device.getAccelerationStructureBuildSizesKHR(
+        auto buildSizesInfo = this->device.getAccelerationStructureBuildSizesKHR(
                 vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
 
         vk::BufferUsageFlags bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
@@ -150,7 +149,7 @@ namespace vlb {
 
         this->tlas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
 
-        this->tlas.handle = this->m_device.createAccelerationStructureKHRUnique(
+        this->tlas.handle = this->device.createAccelerationStructureKHRUnique(
                 vk::AccelerationStructureCreateInfoKHR{}
                 .setBuffer(this->tlas.buffer.handle.get())
                 .setSize(buildSizesInfo.accelerationStructureSize)
@@ -179,9 +178,9 @@ namespace vlb {
 
         auto commandBuffer = Application::recordCommandBuffer();
         commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
-        flushCommandBuffer(commandBuffer, this->m_graphicsQueue);
+        flushCommandBuffer(commandBuffer, this->graphicsQueue);
 
-        this->tlas.buffer.deviceAddress = this->m_device.getAccelerationStructureAddressKHR({ this->tlas.handle.get() });
+        this->tlas.buffer.deviceAddress = this->device.getAccelerationStructureAddressKHR({ this->tlas.handle.get() });
     }
 
     void Raytracer::createStorageImage()
@@ -189,8 +188,8 @@ namespace vlb {
         vk::ImageCreateInfo imageInfo{};
         imageInfo.imageType = vk::ImageType::e2D;
         imageInfo.format = this->surfaceFormat;
-        imageInfo.extent.width = this->m_windowWidth;
-        imageInfo.extent.height = this->m_windowHeight;
+        imageInfo.extent.width = this->windowWidth;
+        imageInfo.extent.height = this->windowHeight;
         imageInfo.extent.depth = 1;
         imageInfo.mipLevels = 1;
         imageInfo.arrayLayers = 1;
@@ -198,10 +197,10 @@ namespace vlb {
         imageInfo.tiling = vk::ImageTiling::eOptimal;
         imageInfo.usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage;
         imageInfo.initialLayout = vk::ImageLayout::eUndefined;
-        this->m_rayGenStorage.handle = this->m_device.createImageUnique(imageInfo);
+        this->rayGenStorage.handle = this->device.createImageUnique(imageInfo);
 
         vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eDeviceLocal;
-        vk::MemoryRequirements memReq = this->m_device.getImageMemoryRequirements(this->m_rayGenStorage.handle.get());
+        vk::MemoryRequirements memReq = this->device.getImageMemoryRequirements(this->rayGenStorage.handle.get());
         vk::MemoryAllocateInfo allocInfo{};
         allocInfo.allocationSize  = memReq.size;
         for (uint32_t i = 0; i < this->physicalDeviceMemoryProperties.memoryTypeCount; ++i)
@@ -213,8 +212,8 @@ namespace vlb {
                 break;
             }
         }
-        this->m_rayGenStorage.memory = this->m_device.allocateMemoryUnique(allocInfo);
-        this->m_device.bindImageMemory(this->m_rayGenStorage.handle.get(), this->m_rayGenStorage.memory.get(), 0);
+        this->rayGenStorage.memory = this->device.allocateMemoryUnique(allocInfo);
+        this->device.bindImageMemory(this->rayGenStorage.handle.get(), this->rayGenStorage.memory.get(), 0);
 
         vk::ImageViewCreateInfo imageViewInfo{};
         imageViewInfo.viewType = vk::ImageViewType::e2D;
@@ -224,13 +223,13 @@ namespace vlb {
         imageViewInfo.subresourceRange.levelCount = 1;
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
-        imageViewInfo.image = this->m_rayGenStorage.handle.get();
-        this->m_rayGenStorage.imageView = this->m_device.createImageViewUnique(imageViewInfo);
+        imageViewInfo.image = this->rayGenStorage.handle.get();
+        this->rayGenStorage.imageView = this->device.createImageViewUnique(imageViewInfo);
 
         vk::CommandBuffer commandBuffer = recordCommandBuffer();
-        Application::setImageLayout(commandBuffer, this->m_rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
+        Application::setImageLayout(commandBuffer, this->rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
                 { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-        flushCommandBuffer(commandBuffer, this->m_graphicsQueue);
+        flushCommandBuffer(commandBuffer, this->graphicsQueue);
     }
 
     void Raytracer::createUniformBuffer()
@@ -255,12 +254,12 @@ namespace vlb {
             .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
 
         std::vector<vk::DescriptorSetLayoutBinding> binding{ accelerationStructureLayoutBinding, resultImageLayoutBinding };
-        this->descriptorSetLayout = m_device.createDescriptorSetLayoutUnique(
+        this->descriptorSetLayout = device.createDescriptorSetLayoutUnique(
                 vk::DescriptorSetLayoutCreateInfo{}
                 .setBindings(binding)
                 );
 
-        this->pipelineLayout = m_device.createPipelineLayoutUnique(
+        this->pipelineLayout = device.createPipelineLayoutUnique(
                 vk::PipelineLayoutCreateInfo{}
                 .setSetLayouts(descriptorSetLayout.get())
                 );
@@ -320,7 +319,7 @@ namespace vlb {
 
         this->shaderGroupsCount = static_cast<uint32_t>(shaderGroups.size());
 
-        auto[result, p] = m_device.createRayTracingPipelineKHRUnique(nullptr, nullptr,
+        auto[result, p] = device.createRayTracingPipelineKHRUnique(nullptr, nullptr,
                 vk::RayTracingPipelineCreateInfoKHR{}
                 .setStages(shaderStages)
                 .setGroups(shaderGroups)
@@ -340,7 +339,7 @@ namespace vlb {
 
     void Raytracer::createShaderBindingTable()
     {
-        auto deviceProperties = this->m_physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+        auto deviceProperties = this->physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
         auto RTPipelineProperties = deviceProperties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
         auto alignedSize = [](uint32_t value, uint32_t alignment)
@@ -360,7 +359,7 @@ namespace vlb {
             | vk::MemoryPropertyFlagBits::eHostCoherent;
 
         std::vector<uint8_t> shaderHandles(sbtSize);
-        auto result = this->m_device.getRayTracingShaderGroupHandlesKHR(this->pipeline.get(), 0, this->shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
+        auto result = this->device.getRayTracingShaderGroupHandlesKHR(this->pipeline.get(), 0, this->shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
         if (result != vk::Result::eSuccess)
         {
             throw std::runtime_error("failed to get ray tracing shader group handles");
@@ -385,14 +384,14 @@ namespace vlb {
             {vk::DescriptorType::eStorageImage, 1}
         };
 
-        this->descriptorPool = this->m_device.createDescriptorPoolUnique(
+        this->descriptorPool = this->device.createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
                 .setMaxSets(1)
                 .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
                 );
 
-        auto descriptorSets = this->m_device.allocateDescriptorSetsUnique(
+        auto descriptorSets = this->device.allocateDescriptorSetsUnique(
                 vk::DescriptorSetAllocateInfo{}
                 .setDescriptorPool(this->descriptorPool.get())
                 .setSetLayouts(descriptorSetLayout.get())
@@ -413,7 +412,7 @@ namespace vlb {
 
         vk::DescriptorImageInfo imageDescriptor{};
         imageDescriptor
-            .setImageView(this->m_rayGenStorage.imageView.get())
+            .setImageView(this->rayGenStorage.imageView.get())
             .setImageLayout(vk::ImageLayout::eGeneral);
 
         vk::WriteDescriptorSet resultImageWrite{};
@@ -423,7 +422,7 @@ namespace vlb {
             .setDstBinding(1)
             .setImageInfo(imageDescriptor);
 
-        this->m_device.updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
+        this->device.updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
     }
 
     void Raytracer::recordDrawCommandBuffers()
@@ -459,17 +458,17 @@ namespace vlb {
                     this->sbt.entries["miss"],
                     this->sbt.entries["hit"],
                     {},
-                    this->m_windowWidth, this->m_windowHeight, 1
+                    this->windowWidth, this->windowHeight, 1
                     );
 
-            Application::setImageLayout(commandBuffer.get(), this->m_rayGenStorage.handle.get(),
+            Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
                     vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal, subresourceRange);
 
             Application::setImageLayout(commandBuffer.get(), swapChainImage,
                     vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, subresourceRange);
 
             commandBuffer->copyImage(
-                    this->m_rayGenStorage.handle.get(),
+                    this->rayGenStorage.handle.get(),
                     vk::ImageLayout::eTransferSrcOptimal,
 
                     swapChainImage,
@@ -480,10 +479,10 @@ namespace vlb {
                     .setSrcOffset({ 0, 0, 0 })
                     .setDstSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
                     .setDstOffset({ 0, 0, 0 })
-                    .setExtent({ this->m_windowWidth, this->m_windowHeight, 1 })
+                    .setExtent({ this->windowWidth, this->windowHeight, 1 })
                     );
 
-            Application::setImageLayout(commandBuffer.get(), this->m_rayGenStorage.handle.get(),
+            Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
                     vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral, subresourceRange);
 
             Application::setImageLayout(commandBuffer.get(), swapChainImage,
@@ -496,13 +495,13 @@ namespace vlb {
     void Raytracer::draw()
     {
         uint64_t timeout = 10000000000000;
-        if (m_device.waitForFences(this->inFlightFences[this->currentFrame], true, timeout) != vk::Result::eSuccess)
+        if (device.waitForFences(this->inFlightFences[this->currentFrame], true, timeout) != vk::Result::eSuccess)
         {
             throw std::runtime_error("drawing failed!");
         }
 
-        auto [result, imageIndex] = this->m_device.acquireNextImageKHR(
-                this->m_swapchain.get(),
+        auto [result, imageIndex] = this->device.acquireNextImageKHR(
+                this->swapchain.get(),
                 timeout,
                 imageAvailableSemaphores[this->currentFrame].get()
                 );
@@ -514,14 +513,14 @@ namespace vlb {
 
         if (this->imagesInFlight[imageIndex] != vk::Fence{})
         {
-            if (this->m_device.waitForFences(this->imagesInFlight[imageIndex], true, timeout) != vk::Result::eSuccess)
+            if (this->device.waitForFences(this->imagesInFlight[imageIndex], true, timeout) != vk::Result::eSuccess)
             {
                 throw std::runtime_error("drawing failed!");
             }
         }
         this->imagesInFlight[imageIndex] = this->inFlightFences[this->currentFrame];
 
-        this->m_device.resetFences(this->inFlightFences[this->currentFrame]);
+        this->device.resetFences(this->inFlightFences[this->currentFrame]);
 
         vk::PipelineStageFlags waitStage{vk::PipelineStageFlagBits::eRayTracingShaderKHR};
         vk::SubmitInfo submitInfo{};
@@ -531,7 +530,7 @@ namespace vlb {
             .setCommandBuffers(this->drawCommandBuffers[imageIndex].get())
             .setSignalSemaphores(this->renderFinishedSemaphores[this->currentFrame].get());
 
-        this->m_graphicsQueue.submit(submitInfo, this->inFlightFences[this->currentFrame]);
+        this->graphicsQueue.submit(submitInfo, this->inFlightFences[this->currentFrame]);
 
         Renderer::present(imageIndex);
     }

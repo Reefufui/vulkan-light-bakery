@@ -36,10 +36,9 @@ namespace vlb {
 
             AccelerationStructure blas;
             AccelerationStructure tlas;
-            Image m_rayGenStorage;
+            Image rayGenStorage;
             ShaderBindingTable sbt;
 
-            //NOTE: ok for now (trying out not to use m_... prefix | using self->... instead)
             vk::UniquePipeline            pipeline;
             vk::UniquePipelineLayout      pipelineLayout;
             vk::UniqueDescriptorSetLayout descriptorSetLayout;
