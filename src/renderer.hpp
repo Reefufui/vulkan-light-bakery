@@ -34,15 +34,19 @@ namespace vlb {
             const int maxFramesInFlight = 2;
 
             void imguiInit();
+            void createImguiRenderPass();
+            void createImguiFrameBuffer();
+            void createDepthBuffer();
             vk::UniqueDescriptorPool imguiPool;
+            Image depthBuffer;
 
         protected:
             vk::Queue            graphicsQueue;
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
+            vk::Format           depthFormat{vk::Format::eD16Unorm};
             vk::ColorSpaceKHR    surfaceColorSpace{vk::ColorSpaceKHR::eSrgbNonlinear};
             //TODO: change to vk::Extent
-            uint32_t             windowWidth;
-            uint32_t             windowHeight;
+            vk::Extent3D         surfaceExtent;
 
             std::vector<vk::UniqueSemaphore> imageAvailableSemaphores;
             std::vector<vk::UniqueSemaphore> renderFinishedSemaphores;
@@ -55,6 +59,9 @@ namespace vlb {
             std::vector<vk::UniqueCommandBuffer> createDrawCommandBuffers();
             void present(uint32_t imageIndex);
             size_t currentFrame = 0;
+
+            vk::UniqueRenderPass imguiPass;
+            std::vector<vk::UniqueFramebuffer> imguiFrameBuffers;
 
         public:
 

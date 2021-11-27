@@ -3,21 +3,23 @@
 #include "renderer.hpp"
 
 #include <imgui.h>
-//#include <imgui_impl_glfw.h>
-//#include <imgui_impl_vulkan.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
 
 namespace vlb {
 
     Renderer::UniqueWindow Renderer::createWindow(const int& windowWidth, const int& windowHeight)
     {
         assert(windowWidth > 0 && windowHeight > 0);
-        this->windowWidth  = static_cast<uint32_t>(windowWidth);
-        this->windowHeight = static_cast<uint32_t>(windowHeight);
+        this->surfaceExtent
+            .setWidth(static_cast<uint32_t>(windowWidth))
+            .setHeight(static_cast<uint32_t>(windowHeight))
+            .setDepth(1);
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-        auto glfwWindow = glfwCreateWindow(this->windowWidth, this->windowHeight, "Vulkan", nullptr, nullptr);
+        auto glfwWindow = glfwCreateWindow(windowWidth, windowHeight, "Vulkan", nullptr, nullptr);
         std::unique_ptr<GLFWwindow, WindowDestroy> window(glfwWindow);
         return window;
     }
@@ -55,19 +57,9 @@ namespace vlb {
 
     vk::UniqueSwapchainKHR Renderer::createSwapchain()
     {
-        vk::Extent2D extent{};
+        vk::Extent2D extent{this->surfaceExtent.width, this->surfaceExtent.height};
 
         vk::SurfaceCapabilitiesKHR capabilities = this->physicalDevice.getSurfaceCapabilitiesKHR(this->surface.get());
-
-        if (capabilities.currentExtent.width != UINT32_MAX)
-        {
-            extent = capabilities.currentExtent;
-        }
-        else
-        {
-            extent.width  = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, this->windowWidth));
-            extent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, this->windowHeight));
-        }
 
         uint32_t imageCount = capabilities.minImageCount + 1;
 
@@ -178,17 +170,103 @@ namespace vlb {
         }
     }
 
-    void Renderer::render()
+    void Renderer::createImguiRenderPass()
     {
-        while (!glfwWindowShouldClose(this->window.get()))
-        {
-            glfwPollEvents();
-            draw();
+        std::array<vk::AttachmentDescription, 2> attachmentDescriptions;
+        attachmentDescriptions[0] = vk::AttachmentDescription( vk::AttachmentDescriptionFlags(),
+                this->surfaceFormat,
+                vk::SampleCountFlagBits::e1,
+                vk::AttachmentLoadOp::eLoad,
+                vk::AttachmentStoreOp::eStore,
+                vk::AttachmentLoadOp::eDontCare,
+                vk::AttachmentStoreOp::eDontCare,
+                vk::ImageLayout::ePresentSrcKHR,
+                vk::ImageLayout::ePresentSrcKHR );
+        attachmentDescriptions[1] = vk::AttachmentDescription( vk::AttachmentDescriptionFlags(),
+                this->depthFormat,
+                vk::SampleCountFlagBits::e1,
+                vk::AttachmentLoadOp::eClear,
+                vk::AttachmentStoreOp::eDontCare,
+                vk::AttachmentLoadOp::eDontCare,
+                vk::AttachmentStoreOp::eDontCare,
+                vk::ImageLayout::eUndefined,
+                vk::ImageLayout::eDepthStencilAttachmentOptimal );
 
-            this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
+        vk::AttachmentReference colorReference( 0, vk::ImageLayout::eColorAttachmentOptimal );
+        vk::AttachmentReference depthReference( 1, vk::ImageLayout::eDepthStencilAttachmentOptimal );
+
+        vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
+                vk::PipelineBindPoint::eGraphics, {}, colorReference, {}, &depthReference );
+
+        this->imguiPass = this->device.createRenderPassUnique(
+                vk::RenderPassCreateInfo( vk::RenderPassCreateFlags(), attachmentDescriptions, subpass ) );
+    }
+
+    void Renderer::createDepthBuffer()
+    {
+        vk::FormatProperties formatProperties = this->physicalDevice.getFormatProperties(this->depthFormat);
+
+        vk::ImageTiling tiling;
+        if (formatProperties.linearTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment)
+        {
+            tiling = vk::ImageTiling::eLinear;
+        }
+        else if (formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment)
+        {
+            tiling = vk::ImageTiling::eOptimal;
+        }
+        else
+        {
+            throw std::runtime_error("DepthStencilAttachment is not supported for D16Unorm depth format.");
         }
 
-        this->device.waitIdle();
+        vk::ImageCreateInfo imageCreateInfo( vk::ImageCreateFlags(),
+                vk::ImageType::e2D,
+                depthFormat,
+                this->surfaceExtent,
+                1,
+                1,
+                vk::SampleCountFlagBits::e1,
+                tiling,
+                vk::ImageUsageFlagBits::eDepthStencilAttachment);
+
+        this->depthBuffer.handle = this->device.createImageUnique(imageCreateInfo);
+
+        vk::MemoryPropertyFlags memoryProperties   = vk::MemoryPropertyFlagBits::eDeviceLocal;
+        vk::MemoryRequirements  memoryRequirements = device.getImageMemoryRequirements(this->depthBuffer.handle.get());
+        auto typeIndex = Application::getMemoryType(memoryRequirements, memoryProperties);
+        assert(typeIndex != uint32_t( ~0 ));
+
+        this->depthBuffer.memory = this->device.allocateMemoryUnique(vk::MemoryAllocateInfo(memoryRequirements.size, typeIndex));
+        this->device.bindImageMemory(this->depthBuffer.handle.get(), this->depthBuffer.memory.get(), 0);
+
+        this->depthBuffer.imageView = this->device.createImageViewUnique(vk::ImageViewCreateInfo(vk::ImageViewCreateFlags(),
+                        this->depthBuffer.handle.get(),
+                        vk::ImageViewType::e2D,
+                        this->depthFormat,
+                        {},
+                        { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } ) );
+    }
+
+    void Renderer::createImguiFrameBuffer()
+    {
+        std::array<vk::ImageView, 2> attachments;
+        attachments[1] = this->depthBuffer.imageView.get();
+
+        vk::FramebufferCreateInfo framebufferCreateInfo{};
+        framebufferCreateInfo
+            .setRenderPass(this->imguiPass.get())
+            .setAttachments(attachments)
+            .setWidth(this->surfaceExtent.width)
+            .setHeight(this->surfaceExtent.height)
+            .setLayers(this->surfaceExtent.depth);
+
+        this->imguiFrameBuffers.reserve(this->swapchainImageViews.size());
+        for (auto const & imageView : this->swapchainImageViews)
+        {
+            attachments[0] = imageView.get();
+            this->imguiFrameBuffers.push_back(this->device.createFramebufferUnique(framebufferCreateInfo));
+        }
     }
 
     void Renderer::imguiInit()
@@ -221,7 +299,40 @@ namespace vlb {
                 );
 
         ImGui::CreateContext();
-        ImGui_ImplGlfw_InitForVulkan(this->window.get());
+        ImGui_ImplGlfw_InitForVulkan(this->window.get(), true);
+        ImGui_ImplVulkan_InitInfo init_info = {};
+        init_info.Instance = this->instance;
+        init_info.PhysicalDevice = this->physicalDevice;
+        init_info.Device = this->device;
+        init_info.Queue = this->graphicsQueue;
+        init_info.DescriptorPool = imguiPool.get();
+        init_info.MinImageCount = this->swapchainImageViews.size();
+        init_info.ImageCount = this->swapchainImageViews.size();
+        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+        ImGui_ImplVulkan_Init(&init_info, this->imguiPass.get());
+
+        auto commandBuffer = Application::recordCommandBuffer();
+        ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+        flushCommandBuffer(commandBuffer, this->graphicsQueue);
+        ImGui_ImplVulkan_DestroyFontUploadObjects();
+    }
+
+    void Renderer::render()
+    {
+        while (!glfwWindowShouldClose(this->window.get()))
+        {
+            glfwPollEvents();
+            //TODO: handle window resize here
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
+            draw();
+            this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
+        }
+
+        this->device.waitIdle();
     }
 
     Renderer::Renderer()
@@ -232,16 +343,19 @@ namespace vlb {
         Application::createDevice();
         Application::createCommandPool();
 
-        this->window  = createWindow(1920, 1080);
+        this->window  = createWindow(2000, 1000);
         this->surface = createSurface();
         this->swapchain = createSwapchain();
         createSwapchainResourses();
         createDrawCommandBuffers();
         createSyncObjects();
 
-        imguiInit();
-
         this->graphicsQueue = this->device.getQueue(getQueueFamilyIndex(), 0);
+
+        createDepthBuffer();
+        createImguiRenderPass();
+        createImguiFrameBuffer();
+        imguiInit();
     }
 
     Renderer::~Renderer()
@@ -250,6 +364,9 @@ namespace vlb {
         {
             this->device.destroy(this->inFlightFences[i]);
         }
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
     }
 
 }

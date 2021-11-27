@@ -19,14 +19,16 @@ set(CONAN_SYSTEM_INCLUDES ON)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(NO_OUTPUT_DIRS)
 
-include_directories(src)
+include_directories(src src/vendor)
 
 add_executable(vklb
     src/main.cpp
     src/application.cpp
     src/renderer.cpp
     src/raytracer.cpp
-)
+    src/vendor/imgui_impl_glfw.cpp
+    src/vendor/imgui_impl_vulkan.cpp
+    )
 
 target_link_libraries(vklb ${CONAN_LIBS} -ldl)
 
