@@ -324,10 +324,6 @@ namespace vlb {
         {
             glfwPollEvents();
             //TODO: handle window resize here
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
             draw();
             this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
         }
