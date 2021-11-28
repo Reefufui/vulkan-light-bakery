@@ -2,6 +2,10 @@
 
 #include "raytracer.hpp"
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 namespace vlb {
 
     void Raytracer::createBLAS()
@@ -188,9 +192,7 @@ namespace vlb {
         vk::ImageCreateInfo imageInfo{};
         imageInfo.imageType = vk::ImageType::e2D;
         imageInfo.format = this->surfaceFormat;
-        imageInfo.extent.width = this->windowWidth;
-        imageInfo.extent.height = this->windowHeight;
-        imageInfo.extent.depth = 1;
+        imageInfo.extent = this->surfaceExtent;
         imageInfo.mipLevels = 1;
         imageInfo.arrayLayers = 1;
         imageInfo.samples = vk::SampleCountFlagBits::e1;
@@ -453,12 +455,13 @@ namespace vlb {
                     nullptr
                     );
 
+            auto[width, height, depth] = this->surfaceExtent;
             commandBuffer->traceRaysKHR(
                     this->sbt.entries["rayGen"],
                     this->sbt.entries["miss"],
                     this->sbt.entries["hit"],
                     {},
-                    this->windowWidth, this->windowHeight, 1
+                    width, height, depth
                     );
 
             Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
@@ -479,7 +482,7 @@ namespace vlb {
                     .setSrcOffset({ 0, 0, 0 })
                     .setDstSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
                     .setDstOffset({ 0, 0, 0 })
-                    .setExtent({ this->windowWidth, this->windowHeight, 1 })
+                    .setExtent(this->surfaceExtent)
                     );
 
             Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
@@ -487,6 +490,26 @@ namespace vlb {
 
             Application::setImageLayout(commandBuffer.get(), swapChainImage,
                     vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, subresourceRange);
+
+            std::array<vk::ClearValue, 2> clearValues;
+            clearValues[0].color        = vk::ClearColorValue( std::array<float, 4>( { { 0.2f, 0.2f, 0.2f, 0.2f } } ) );
+            clearValues[1].depthStencil = vk::ClearDepthStencilValue( 1.0f, 0 );
+
+            vk::RenderPassBeginInfo renderPassBeginInfo{};
+            renderPassBeginInfo
+                .setRenderPass(this->imguiPass.get())
+                .setFramebuffer(this->imguiFrameBuffers[i].get())
+                .setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)))
+                .setClearValues(clearValues);
+
+            commandBuffer->beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
+            ImGui::Render();
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer.get());
+            commandBuffer->endRenderPass();
 
             commandBuffer->end();
         }
