@@ -6,6 +6,8 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 
+#include <limits>
+
 namespace vlb {
 
     void Raytracer::createBLAS()
@@ -427,9 +429,34 @@ namespace vlb {
         this->device.updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
     }
 
-    void Raytracer::recordDrawCommandBuffers()
+    void Raytracer::recordDrawCommandBuffer(uint64_t imageIndex)
     {
-        this->drawCommandBuffers = createDrawCommandBuffers();
+        auto& commandBuffer    = this->drawCommandBuffers[imageIndex];
+        auto& swapChainImage   = this->swapChainImages[imageIndex];
+        auto& imguiFrameBuffer = this->imguiFrameBuffers[imageIndex];
+
+        commandBuffer->begin(vk::CommandBufferBeginInfo{}
+                .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+        commandBuffer->bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, this->pipeline.get());
+
+        commandBuffer->bindDescriptorSets(
+                vk::PipelineBindPoint::eRayTracingKHR,
+                this->pipelineLayout.get(),
+                0,
+                this->descriptorSet.get(),
+                nullptr
+                );
+
+        auto[width, height, depth] = this->surfaceExtent;
+        commandBuffer->traceRaysKHR(
+                this->sbt.entries["rayGen"],
+                this->sbt.entries["miss"],
+                this->sbt.entries["hit"],
+                {},
+                width, height, depth
+                );
+
         vk::ImageSubresourceRange subresourceRange{};
         subresourceRange
             .setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -438,96 +465,67 @@ namespace vlb {
             .setBaseArrayLayer(0)
             .setLayerCount(1);
 
-        for (int32_t i = 0; i < this->drawCommandBuffers.size(); ++i)
-        {
-            auto& commandBuffer  = this->drawCommandBuffers[i];
-            auto& swapChainImage = this->swapChainImages[i];
+        Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
+                vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal, subresourceRange);
 
-            commandBuffer->begin(vk::CommandBufferBeginInfo{});
+        Application::setImageLayout(commandBuffer.get(), swapChainImage,
+                vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, subresourceRange);
 
-            commandBuffer->bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, this->pipeline.get());
+        commandBuffer->copyImage(
+                this->rayGenStorage.handle.get(),
+                vk::ImageLayout::eTransferSrcOptimal,
 
-            commandBuffer->bindDescriptorSets(
-                    vk::PipelineBindPoint::eRayTracingKHR,
-                    this->pipelineLayout.get(),
-                    0,
-                    this->descriptorSet.get(),
-                    nullptr
-                    );
+                swapChainImage,
+                vk::ImageLayout::eTransferDstOptimal,
 
-            auto[width, height, depth] = this->surfaceExtent;
-            commandBuffer->traceRaysKHR(
-                    this->sbt.entries["rayGen"],
-                    this->sbt.entries["miss"],
-                    this->sbt.entries["hit"],
-                    {},
-                    width, height, depth
-                    );
+                vk::ImageCopy{}
+                .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                .setSrcOffset({ 0, 0, 0 })
+                .setDstSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                .setDstOffset({ 0, 0, 0 })
+                .setExtent(this->surfaceExtent)
+                );
 
-            Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
-                    vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal, subresourceRange);
+        Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
+                vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral, subresourceRange);
 
-            Application::setImageLayout(commandBuffer.get(), swapChainImage,
-                    vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, subresourceRange);
+        Application::setImageLayout(commandBuffer.get(), swapChainImage,
+                vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, subresourceRange);
 
-            commandBuffer->copyImage(
-                    this->rayGenStorage.handle.get(),
-                    vk::ImageLayout::eTransferSrcOptimal,
+        std::array<vk::ClearValue, 2> clearValues;
+        clearValues[0].color        = vk::ClearColorValue( std::array<float, 4>( { { 0.2f, 0.2f, 0.2f, 0.2f } } ) );
+        clearValues[1].depthStencil = vk::ClearDepthStencilValue( 1.0f, 0 );
 
-                    swapChainImage,
-                    vk::ImageLayout::eTransferDstOptimal,
+        vk::RenderPassBeginInfo renderPassBeginInfo{};
+        renderPassBeginInfo
+            .setRenderPass(this->imguiPass.get())
+            .setFramebuffer(imguiFrameBuffer.get())
+            .setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)))
+            .setClearValues(clearValues);
 
-                    vk::ImageCopy{}
-                    .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
-                    .setSrcOffset({ 0, 0, 0 })
-                    .setDstSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
-                    .setDstOffset({ 0, 0, 0 })
-                    .setExtent(this->surfaceExtent)
-                    );
+        commandBuffer->beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Text("Vulkan Light Bakery");
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::Render();
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer.get());
+        commandBuffer->endRenderPass();
 
-            Application::setImageLayout(commandBuffer.get(), this->rayGenStorage.handle.get(),
-                    vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral, subresourceRange);
-
-            Application::setImageLayout(commandBuffer.get(), swapChainImage,
-                    vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, subresourceRange);
-
-            std::array<vk::ClearValue, 2> clearValues;
-            clearValues[0].color        = vk::ClearColorValue( std::array<float, 4>( { { 0.2f, 0.2f, 0.2f, 0.2f } } ) );
-            clearValues[1].depthStencil = vk::ClearDepthStencilValue( 1.0f, 0 );
-
-            vk::RenderPassBeginInfo renderPassBeginInfo{};
-            renderPassBeginInfo
-                .setRenderPass(this->imguiPass.get())
-                .setFramebuffer(this->imguiFrameBuffers[i].get())
-                .setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)))
-                .setClearValues(clearValues);
-
-            commandBuffer->beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
-            ImGui::Render();
-            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer.get());
-            commandBuffer->endRenderPass();
-
-            commandBuffer->end();
-        }
+        commandBuffer->end();
     }
 
     void Raytracer::draw()
     {
-        uint64_t timeout = 10000000000000;
-        if (device.waitForFences(this->inFlightFences[this->currentFrame], true, timeout) != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("drawing failed!");
-        }
+        auto timeout = std::numeric_limits<uint64_t>::max();
+        this->device.waitForFences(this->inFlightFences[this->currentFrame], true, timeout);
+        this->device.resetFences(this->inFlightFences[this->currentFrame]);
 
         auto [result, imageIndex] = this->device.acquireNextImageKHR(
                 this->swapchain.get(),
                 timeout,
-                imageAvailableSemaphores[this->currentFrame].get()
-                );
+                imageAvailableSemaphores[this->currentFrame].get() );
 
         if (result != vk::Result::eSuccess)
         {
@@ -536,14 +534,11 @@ namespace vlb {
 
         if (this->imagesInFlight[imageIndex] != vk::Fence{})
         {
-            if (this->device.waitForFences(this->imagesInFlight[imageIndex], true, timeout) != vk::Result::eSuccess)
-            {
-                throw std::runtime_error("drawing failed!");
-            }
+            this->device.waitForFences(this->imagesInFlight[imageIndex], true, timeout);
         }
         this->imagesInFlight[imageIndex] = this->inFlightFences[this->currentFrame];
 
-        this->device.resetFences(this->inFlightFences[this->currentFrame]);
+        recordDrawCommandBuffer(imageIndex);
 
         vk::PipelineStageFlags waitStage{vk::PipelineStageFlagBits::eRayTracingShaderKHR};
         vk::SubmitInfo submitInfo{};
@@ -566,7 +561,8 @@ namespace vlb {
         createRayTracingPipeline();
         createShaderBindingTable();
         createDescriptorSets();
-        recordDrawCommandBuffers();
+
+        this->drawCommandBuffers = Renderer::createDrawCommandBuffers();
     }
 }
 

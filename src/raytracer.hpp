@@ -19,7 +19,7 @@ namespace vlb {
             void createRayTracingPipeline();
             void createShaderBindingTable();
             void createDescriptorSets();
-            void recordDrawCommandBuffers();
+            void recordDrawCommandBuffer(uint64_t imageIndex);
             void draw();
 
             struct AccelerationStructure
