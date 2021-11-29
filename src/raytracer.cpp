@@ -433,7 +433,6 @@ namespace vlb {
     {
         auto& commandBuffer    = this->drawCommandBuffers[imageIndex];
         auto& swapChainImage   = this->swapChainImages[imageIndex];
-        auto& imguiFrameBuffer = this->imguiFrameBuffers[imageIndex];
 
         commandBuffer->begin(vk::CommandBufferBeginInfo{}
                 .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
@@ -492,26 +491,7 @@ namespace vlb {
         Application::setImageLayout(commandBuffer.get(), swapChainImage,
                 vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR, subresourceRange);
 
-        std::array<vk::ClearValue, 2> clearValues;
-        clearValues[0].color        = vk::ClearColorValue( std::array<float, 4>( { { 0.2f, 0.2f, 0.2f, 0.2f } } ) );
-        clearValues[1].depthStencil = vk::ClearDepthStencilValue( 1.0f, 0 );
-
-        vk::RenderPassBeginInfo renderPassBeginInfo{};
-        renderPassBeginInfo
-            .setRenderPass(this->imguiPass.get())
-            .setFramebuffer(imguiFrameBuffer.get())
-            .setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)))
-            .setClearValues(clearValues);
-
-        commandBuffer->beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-        ImGui::Text("Vulkan Light Bakery");
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::Render();
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer.get());
-        commandBuffer->endRenderPass();
+        ui.draw(imageIndex, commandBuffer.get());
 
         commandBuffer->end();
     }

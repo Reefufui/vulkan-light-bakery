@@ -1,3 +1,5 @@
+# created in 2021 by Andrey Treefonov https://github.com/Reefufui
+
 project(VulkanLightBakery)
 cmake_minimum_required(VERSION 3.21)
 
@@ -26,8 +28,10 @@ add_executable(vklb
     src/application.cpp
     src/renderer.cpp
     src/raytracer.cpp
-    src/vendor/define_implementations.cpp
     src/scene_manager.cpp
+    src/ui.cpp
+
+    src/vendor/define_implementations.cpp
     src/vendor/imgui_impl_glfw.cpp
     src/vendor/imgui_impl_vulkan.cpp
     )

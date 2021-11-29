@@ -8,13 +8,11 @@ namespace vlb {
 
     SceneManager::SceneManager()
     {
-        std::cout << "creating\n";
         std::string err;
         std::string warn;
 
         //NOTE:test
         bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "assets/models/plants.gltf");
-        std::cout << "here2\n";
 
         if (!warn.empty()) {
             printf("Warn: %s\n", warn.c_str());
@@ -31,7 +29,6 @@ namespace vlb {
 
     SceneManager::~SceneManager()
     {
-        std::cout << "destroying\n";
     }
 
 }

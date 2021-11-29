@@ -5,6 +5,7 @@
 
 #include "application.hpp"
 #include "scene_manager.hpp"
+#include "ui.hpp"
 
 namespace vlb {
 
@@ -33,13 +34,7 @@ namespace vlb {
             void createSyncObjects();
             virtual void draw() = 0;
             const int maxFramesInFlight = 2;
-
-            void imguiInit();
-            void createImguiRenderPass();
-            void createImguiFrameBuffer();
-            void createDepthBuffer();
-            vk::UniqueDescriptorPool imguiPool;
-            Image depthBuffer;
+            void initUI();
 
         protected:
             vk::Queue            graphicsQueue;
@@ -60,10 +55,8 @@ namespace vlb {
             void present(uint32_t imageIndex);
             size_t currentFrame = 0;
 
-            vk::UniqueRenderPass imguiPass;
-            std::vector<vk::UniqueFramebuffer> imguiFrameBuffers;
-
             SceneManager sceneManager;
+            UI ui;
 
         public:
 
