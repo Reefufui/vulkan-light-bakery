@@ -191,12 +191,12 @@ namespace vlb {
         this->commandPool = this->device.createCommandPool(poolInfo, nullptr);
     }
 
-    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequiriments, const vk::MemoryPropertyFlags memoryProperties)
+    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags memoryProperties)
     {
         int32_t result{-1};
         for (uint32_t i{}; i < VK_MAX_MEMORY_TYPES; ++i)
         {
-            if (memoryRequiriments.memoryTypeBits & (1 << i))
+            if (memoryRequirements.memoryTypeBits & (1 << i))
             {
                 if ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties)
                 {

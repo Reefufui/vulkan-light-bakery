@@ -23,6 +23,22 @@ namespace vlb {
 
     class Application
     {
+        public:
+
+            struct Buffer
+            {
+                vk::UniqueBuffer         handle;
+                vk::UniqueDeviceMemory   memory;
+                vk::DeviceAddress        deviceAddress;
+            };
+
+            struct Image
+            {
+                vk::UniqueImage        handle;
+                vk::UniqueDeviceMemory memory;
+                vk::UniqueImageView    imageView;
+            };
+
         protected:
 
             vk::Instance       instance;
@@ -58,20 +74,6 @@ namespace vlb {
             void flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue);
 
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
-
-            struct Buffer
-            {
-                vk::UniqueBuffer         handle;
-                vk::UniqueDeviceMemory   memory;
-                vk::DeviceAddress        deviceAddress;
-            };
-
-            struct Image
-            {
-                vk::UniqueImage        handle;
-                vk::UniqueDeviceMemory memory;
-                vk::UniqueImageView    imageView;
-            };
 
             Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data = nullptr);
 

@@ -4,6 +4,7 @@ vulkan-loader/1.2.190
 glfw/3.3.3
 glm/0.9.9.8
 tinygltf/2.5.0
+nlohmann_json/3.10.4
 imgui/1.85
 
 [generators]

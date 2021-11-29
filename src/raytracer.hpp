@@ -5,8 +5,6 @@
 
 #include "renderer.hpp"
 
-#include <unordered_map>
-
 namespace vlb {
 
     class Raytracer : public Renderer
