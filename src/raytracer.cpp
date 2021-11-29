@@ -62,7 +62,7 @@ namespace vlb {
             .setGeometries(geometry);
 
         const uint32_t primitiveCount = 1;
-        auto buildSizesInfo = this->device.getAccelerationStructureBuildSizesKHR(
+        auto buildSizesInfo = this->device.get().getAccelerationStructureBuildSizesKHR(
             vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
 
         bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
@@ -70,7 +70,7 @@ namespace vlb {
 
         this->blas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
 
-        this->blas.handle = this->device.createAccelerationStructureKHRUnique(
+        this->blas.handle = this->device.get().createAccelerationStructureKHRUnique(
             vk::AccelerationStructureCreateInfoKHR{}
             .setBuffer(this->blas.buffer.handle.get())
             .setSize(buildSizesInfo.accelerationStructureSize)
@@ -101,7 +101,7 @@ namespace vlb {
         commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
         flushCommandBuffer(commandBuffer, this->graphicsQueue);
 
-        this->blas.buffer.deviceAddress = this->device.getAccelerationStructureAddressKHR({ this->blas.handle.get() });
+        this->blas.buffer.deviceAddress = this->device.get().getAccelerationStructureAddressKHR({ this->blas.handle.get() });
     }
 
     void Raytracer::createTLAS()
@@ -145,7 +145,7 @@ namespace vlb {
             .setGeometries(geometry);
 
         const uint32_t primitiveCount = 1;
-        auto buildSizesInfo = this->device.getAccelerationStructureBuildSizesKHR(
+        auto buildSizesInfo = this->device.get().getAccelerationStructureBuildSizesKHR(
                 vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
 
         vk::BufferUsageFlags bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
@@ -155,7 +155,7 @@ namespace vlb {
 
         this->tlas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
 
-        this->tlas.handle = this->device.createAccelerationStructureKHRUnique(
+        this->tlas.handle = this->device.get().createAccelerationStructureKHRUnique(
                 vk::AccelerationStructureCreateInfoKHR{}
                 .setBuffer(this->tlas.buffer.handle.get())
                 .setSize(buildSizesInfo.accelerationStructureSize)
@@ -186,7 +186,7 @@ namespace vlb {
         commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
         flushCommandBuffer(commandBuffer, this->graphicsQueue);
 
-        this->tlas.buffer.deviceAddress = this->device.getAccelerationStructureAddressKHR({ this->tlas.handle.get() });
+        this->tlas.buffer.deviceAddress = this->device.get().getAccelerationStructureAddressKHR({ this->tlas.handle.get() });
     }
 
     void Raytracer::createStorageImage()
@@ -201,10 +201,10 @@ namespace vlb {
         imageInfo.tiling = vk::ImageTiling::eOptimal;
         imageInfo.usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage;
         imageInfo.initialLayout = vk::ImageLayout::eUndefined;
-        this->rayGenStorage.handle = this->device.createImageUnique(imageInfo);
+        this->rayGenStorage.handle = this->device.get().createImageUnique(imageInfo);
 
         vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eDeviceLocal;
-        vk::MemoryRequirements memReq = this->device.getImageMemoryRequirements(this->rayGenStorage.handle.get());
+        vk::MemoryRequirements memReq = this->device.get().getImageMemoryRequirements(this->rayGenStorage.handle.get());
         vk::MemoryAllocateInfo allocInfo{};
         allocInfo.allocationSize  = memReq.size;
         for (uint32_t i = 0; i < this->physicalDeviceMemoryProperties.memoryTypeCount; ++i)
@@ -216,8 +216,8 @@ namespace vlb {
                 break;
             }
         }
-        this->rayGenStorage.memory = this->device.allocateMemoryUnique(allocInfo);
-        this->device.bindImageMemory(this->rayGenStorage.handle.get(), this->rayGenStorage.memory.get(), 0);
+        this->rayGenStorage.memory = this->device.get().allocateMemoryUnique(allocInfo);
+        this->device.get().bindImageMemory(this->rayGenStorage.handle.get(), this->rayGenStorage.memory.get(), 0);
 
         vk::ImageViewCreateInfo imageViewInfo{};
         imageViewInfo.viewType = vk::ImageViewType::e2D;
@@ -228,7 +228,7 @@ namespace vlb {
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
         imageViewInfo.image = this->rayGenStorage.handle.get();
-        this->rayGenStorage.imageView = this->device.createImageViewUnique(imageViewInfo);
+        this->rayGenStorage.imageView = this->device.get().createImageViewUnique(imageViewInfo);
 
         vk::CommandBuffer commandBuffer = recordCommandBuffer();
         Application::setImageLayout(commandBuffer, this->rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
@@ -258,12 +258,12 @@ namespace vlb {
             .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
 
         std::vector<vk::DescriptorSetLayoutBinding> binding{ accelerationStructureLayoutBinding, resultImageLayoutBinding };
-        this->descriptorSetLayout = device.createDescriptorSetLayoutUnique(
+        this->descriptorSetLayout = this->device.get().createDescriptorSetLayoutUnique(
                 vk::DescriptorSetLayoutCreateInfo{}
                 .setBindings(binding)
                 );
 
-        this->pipelineLayout = device.createPipelineLayoutUnique(
+        this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
                 vk::PipelineLayoutCreateInfo{}
                 .setSetLayouts(descriptorSetLayout.get())
                 );
@@ -323,7 +323,7 @@ namespace vlb {
 
         this->shaderGroupsCount = static_cast<uint32_t>(shaderGroups.size());
 
-        auto[result, p] = device.createRayTracingPipelineKHRUnique(nullptr, nullptr,
+        auto[result, p] = this->device.get().createRayTracingPipelineKHRUnique(nullptr, nullptr,
                 vk::RayTracingPipelineCreateInfoKHR{}
                 .setStages(shaderStages)
                 .setGroups(shaderGroups)
@@ -363,7 +363,7 @@ namespace vlb {
             | vk::MemoryPropertyFlagBits::eHostCoherent;
 
         std::vector<uint8_t> shaderHandles(sbtSize);
-        auto result = this->device.getRayTracingShaderGroupHandlesKHR(this->pipeline.get(), 0, this->shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
+        auto result = this->device.get().getRayTracingShaderGroupHandlesKHR(this->pipeline.get(), 0, this->shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
         if (result != vk::Result::eSuccess)
         {
             throw std::runtime_error("failed to get ray tracing shader group handles");
@@ -388,14 +388,14 @@ namespace vlb {
             {vk::DescriptorType::eStorageImage, 1}
         };
 
-        this->descriptorPool = this->device.createDescriptorPoolUnique(
+        this->descriptorPool = this->device.get().createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
                 .setMaxSets(1)
                 .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
                 );
 
-        auto descriptorSets = this->device.allocateDescriptorSetsUnique(
+        auto descriptorSets = this->device.get().allocateDescriptorSetsUnique(
                 vk::DescriptorSetAllocateInfo{}
                 .setDescriptorPool(this->descriptorPool.get())
                 .setSetLayouts(descriptorSetLayout.get())
@@ -426,7 +426,7 @@ namespace vlb {
             .setDstBinding(1)
             .setImageInfo(imageDescriptor);
 
-        this->device.updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
+        this->device.get().updateDescriptorSets({ accelerationStructureWrite, resultImageWrite }, nullptr);
     }
 
     void Raytracer::recordDrawCommandBuffer(uint64_t imageIndex)
@@ -499,10 +499,10 @@ namespace vlb {
     void Raytracer::draw()
     {
         auto timeout = std::numeric_limits<uint64_t>::max();
-        this->device.waitForFences(this->inFlightFences[this->currentFrame], true, timeout);
-        this->device.resetFences(this->inFlightFences[this->currentFrame]);
+        this->device.get().waitForFences(this->inFlightFences[this->currentFrame], true, timeout);
+        this->device.get().resetFences(this->inFlightFences[this->currentFrame]);
 
-        auto [result, imageIndex] = this->device.acquireNextImageKHR(
+        auto [result, imageIndex] = this->device.get().acquireNextImageKHR(
                 this->swapchain.get(),
                 timeout,
                 imageAvailableSemaphores[this->currentFrame].get() );
@@ -514,7 +514,7 @@ namespace vlb {
 
         if (this->imagesInFlight[imageIndex] != vk::Fence{})
         {
-            this->device.waitForFences(this->imagesInFlight[imageIndex], true, timeout);
+            this->device.get().waitForFences(this->imagesInFlight[imageIndex], true, timeout);
         }
         this->imagesInFlight[imageIndex] = this->inFlightFences[this->currentFrame];
 
