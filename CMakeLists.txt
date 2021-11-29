@@ -26,13 +26,33 @@ add_executable(vklb
     src/application.cpp
     src/renderer.cpp
     src/raytracer.cpp
+    src/vendor/define_implementations.cpp
+    src/scene_manager.cpp
     src/vendor/imgui_impl_glfw.cpp
     src/vendor/imgui_impl_vulkan.cpp
     )
 
 target_link_libraries(vklb ${CONAN_LIBS} -ldl)
 
-file(COPY assets/ DESTINATION assets/)
+##################
+## ASSETS ########
+##################
+
+set(ASSETS_URL http://vulkan.gpuinfo.org/downloads/vulkan_asset_pack_gltf.zip)
+set(ASSETS_ZIP assets.zip)
+
+if (NOT EXISTS ${CMAKE_BINARY_DIR}/assets)
+    message(CHECK_START "Downloading assets")
+    file(DOWNLOAD ${ASSETS_URL} ${ASSETS_ZIP} TLS_VERIFY ON)
+    file(ARCHIVE_EXTRACT INPUT ${ASSETS_ZIP} DESTINATION ${CMAKE_BINARY_DIR})
+    file(RENAME ${CMAKE_BINARY_DIR}/data ${CMAKE_BINARY_DIR}/assets)
+    file(REMOVE ${CMAKE_BINARY_DIR}/${ASSETS_ZIP})
+    message(CHECK_PASS "done")
+endif()
+
+##################
+## SHADERS #######
+##################
 
 message(CHECK_START "Detecting ${GLSL_VALIDATOR}")
 find_program(KERNEL_COMPILER "${GLSL_VALIDATOR}" ${CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH})
@@ -53,8 +73,8 @@ if (KERNEL_COMPILER)
             DEPENDS ${GLSL})
         list(APPEND SPIRV_BINARY_FILES ${SPIRV})
     endforeach(GLSL)
-    add_custom_target(Shaders DEPENDS ${SPIRV_BINARY_FILES})
-    add_dependencies(vklb Shaders)
+    add_custom_target(shaders DEPENDS ${SPIRV_BINARY_FILES})
+    add_dependencies(vklb shaders)
 else()
     message(CHECK_FAIL "missing")
     message(WARNING "MAKE SURE TO COMPILE SHADERS YOURSELF")

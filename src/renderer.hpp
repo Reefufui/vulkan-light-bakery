@@ -4,6 +4,7 @@
 #define RENDERER_HPP
 
 #include "application.hpp"
+#include "scene_manager.hpp"
 
 namespace vlb {
 
@@ -45,7 +46,6 @@ namespace vlb {
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
             vk::Format           depthFormat{vk::Format::eD16Unorm};
             vk::ColorSpaceKHR    surfaceColorSpace{vk::ColorSpaceKHR::eSrgbNonlinear};
-            //TODO: change to vk::Extent
             vk::Extent3D         surfaceExtent;
 
             std::vector<vk::UniqueSemaphore> imageAvailableSemaphores;
@@ -63,6 +63,8 @@ namespace vlb {
             vk::UniqueRenderPass imguiPass;
             std::vector<vk::UniqueFramebuffer> imguiFrameBuffers;
 
+            SceneManager sceneManager;
+
         public:
 
             Renderer();
@@ -73,3 +75,4 @@ namespace vlb {
 }
 
 #endif // ifndef RENDERER_HPP
+
