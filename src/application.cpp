@@ -192,14 +192,21 @@ namespace vlb {
         this->commandPool = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
     }
 
-    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags memoryProperties)
+    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags& memoryProperties)
     {
+        return getMemoryType(this->physicalDevice, memoryRequirements, memoryProperties);
+    }
+
+    uint32_t Application::getMemoryType(const vk::PhysicalDevice& physicalDevice, const vk::MemoryRequirements& memoryRequirements,
+            const vk::MemoryPropertyFlags& memoryProperties)
+    {
+        auto physicalDeviceMemoryProperties = physicalDevice.getMemoryProperties();
         int32_t result{-1};
         for (uint32_t i{}; i < VK_MAX_MEMORY_TYPES; ++i)
         {
             if (memoryRequirements.memoryTypeBits & (1 << i))
             {
-                if ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties)
+                if ((physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties)
                 {
                     result = i;
                     break;
@@ -213,10 +220,15 @@ namespace vlb {
 
     vk::CommandBuffer Application::recordCommandBuffer(vk::CommandBufferAllocateInfo info)
     {
-        auto passed = info == vk::CommandBufferAllocateInfo{};
-        info = passed ? vk::CommandBufferAllocateInfo(this->commandPool.get(), vk::CommandBufferLevel::ePrimary, 1) : info;
+        return recordCommandBuffer(this->device.get(), this->commandPool.get(), info);
+    }
 
-        vk::CommandBuffer cmdBuffer = this->device.get().allocateCommandBuffers(info).front();
+    vk::CommandBuffer Application::recordCommandBuffer(vk::Device device, vk::CommandPool commandPool, vk::CommandBufferAllocateInfo info)
+    {
+        auto passed = info == vk::CommandBufferAllocateInfo{};
+        info = passed ? vk::CommandBufferAllocateInfo(commandPool, vk::CommandBufferLevel::ePrimary, 1) : info;
+
+        vk::CommandBuffer cmdBuffer = device.allocateCommandBuffers(info).front();
         cmdBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
         return cmdBuffer;
@@ -224,16 +236,21 @@ namespace vlb {
 
     void Application::flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue)
     {
+        flushCommandBuffer(this->device.get(), this->commandPool.get(), cmdBuffer, queue);
+    }
+
+    void Application::flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue)
+    {
         cmdBuffer.end();
         vk::SubmitInfo submitInfo{};
         submitInfo
             .setCommandBufferCount(1)
             .setPCommandBuffers(&cmdBuffer);
 
-        vk::Fence fence = this->device.get().createFence(vk::FenceCreateInfo());
+        vk::Fence fence = device.createFence(vk::FenceCreateInfo());
         queue.submit(submitInfo, fence);
         try {
-            auto r = this->device.get().waitForFences(fence, false, 1000000000);
+            auto r = device.waitForFences(fence, false, 1000000000);
             if (r != vk::Result::eSuccess) std::cout << "flushing failed!\n";
         }
         catch (std::exception const &e)
@@ -241,8 +258,8 @@ namespace vlb {
             std::cout << e.what() << "\n";
         }
 
-        this->device.get().destroy(fence);
-        this->device.get().freeCommandBuffers(this->commandPool.get(), 1, &cmdBuffer);
+        device.destroy(fence);
+        device.freeCommandBuffers(commandPool, 1, &cmdBuffer);
     }
 
     void Application::setImageLayout(
@@ -342,36 +359,42 @@ namespace vlb {
 
     Application::Buffer Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
     {
+        return createBuffer(this->device.get(), this->physicalDevice, size, usage, memoryProperty, data);
+    }
+
+    Application::Buffer Application::createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size,
+            vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
+    {
         Buffer buffer{};
-        buffer.handle = this->device.get().createBufferUnique(
+        buffer.handle = device.createBufferUnique(
                 vk::BufferCreateInfo{}
                 .setSize(size)
                 .setUsage(usage)
                 .setQueueFamilyIndexCount(0)
                 );
 
-        auto memoryRequirements = this->device.get().getBufferMemoryRequirements(buffer.handle.get());
+        auto memoryRequirements = device.getBufferMemoryRequirements(buffer.handle.get());
         vk::MemoryAllocateFlagsInfo memoryFlagsInfo{};
         if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress)
         {
             memoryFlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
         }
 
-        buffer.memory = this->device.get().allocateMemoryUnique(
+        buffer.memory = device.allocateMemoryUnique(
                 vk::MemoryAllocateInfo{}
                 .setAllocationSize(memoryRequirements.size)
-                .setMemoryTypeIndex(Application::getMemoryType(memoryRequirements, memoryProperty))
+                .setMemoryTypeIndex(getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
                 .setPNext(&memoryFlagsInfo)
                 );
-        this->device.get().bindBufferMemory(buffer.handle.get(), buffer.memory.get(), 0);
+        device.bindBufferMemory(buffer.handle.get(), buffer.memory.get(), 0);
 
         if (data)
         {
             if (memoryProperty & vk::MemoryPropertyFlagBits::eHostVisible)
             {
-                void* dataPtr = this->device.get().mapMemory(buffer.memory.get(), 0, size);
+                void* dataPtr = device.mapMemory(buffer.memory.get(), 0, size);
                 memcpy(dataPtr, data, static_cast<size_t>(size));
-                this->device.get().unmapMemory(buffer.memory.get());
+                device.unmapMemory(buffer.memory.get());
             }
             else if (memoryProperty & vk::MemoryPropertyFlagBits::eDeviceLocal)
             {
@@ -384,7 +407,7 @@ namespace vlb {
             }
         }
 
-        buffer.deviceAddress = this->device.get().getBufferAddressKHR({buffer.handle.get()});
+        buffer.deviceAddress = device.getBufferAddressKHR({buffer.handle.get()});
 
         return buffer;
     }
