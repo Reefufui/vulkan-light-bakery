@@ -41,17 +41,18 @@ namespace vlb {
 
         protected:
 
-            vk::Instance       instance;
-            vk::PhysicalDevice physicalDevice;
-            vk::Device         device;
-            vk::CommandPool    commandPool;
+            vk::UniqueInstance    instance;
+            vk::PhysicalDevice    physicalDevice;
+            vk::UniqueDevice      device;
+            vk::UniqueCommandPool commandPool;
 
             vk::DynamicLoader  dl;
 
-            void pushPresentationExtensions();
+            void pushExtentionsForGraphics();
             void initDebugReportCallback();
 
-            virtual vk::QueueFlagBits getQueueFlag() = 0;
+            //TODO: mulitple queue families
+            vk::QueueFlagBits getQueueFlag() {return vk::QueueFlagBits::eGraphics;};
             uint32_t getQueueFamilyIndex();
 
             void createInstance();
@@ -79,7 +80,7 @@ namespace vlb {
 
         private:
 
-            vk::DebugUtilsMessengerEXT debugMessenger;
+            vk::UniqueDebugUtilsMessengerEXT debugMessenger;
             std::vector<const char*> instanceLayers;
             std::vector<const char*> instanceExtensions;
             std::vector<const char*> deviceLayers;
@@ -90,9 +91,8 @@ namespace vlb {
 
         public:
 
-            Application();
+            Application(bool isGraphical = true);
             Application(const Application& other) = delete;
-            ~Application();
     };
 
 }
