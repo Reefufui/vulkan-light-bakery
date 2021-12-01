@@ -41,37 +41,49 @@ namespace vlb {
 
         protected:
 
-            vk::Instance       instance;
-            vk::PhysicalDevice physicalDevice;
-            vk::Device         device;
-            vk::CommandPool    commandPool;
+            vk::UniqueInstance    instance;
+            vk::PhysicalDevice    physicalDevice;
+            vk::UniqueDevice      device;
 
             vk::DynamicLoader  dl;
 
-            void pushPresentationExtensions();
+            void pushExtentionsForGraphics();
             void initDebugReportCallback();
 
-            virtual vk::QueueFlagBits getQueueFlag() = 0;
-            uint32_t getQueueFamilyIndex();
+            struct QueueFamilyIndex
+            {
+                uint32_t graphics = -1;
+                uint32_t transfer = -1;
+                uint32_t compute = -1;
+            } queueFamilyIndex;
+            struct Queue
+            {
+                vk::Queue graphics;
+                vk::Queue transfer;
+                vk::Queue compute;
+            } queue;
+            void setQueueFamilyIndices();
+            void getQueues();
 
             void createInstance();
             void createDevice(size_t physicalDeviceIdx = 0);
+            void createCommandPools();
+            struct CommandPool
+            {
+                vk::UniqueCommandPool graphics;
+                vk::UniqueCommandPool transfer;
+                vk::UniqueCommandPool compute;
+            } commandPool;
 
             vk::PhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
-            uint32_t getMemoryType(const vk::MemoryRequirements& memoryRequiriments, const vk::MemoryPropertyFlags memoryProperties);
+            uint32_t getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags& memoryProperties);
 
-            void setImageLayout(
-                    vk::CommandBuffer cmdbuffer,
-                    vk::Image image,
-                    vk::ImageLayout oldImageLayout,
-                    vk::ImageLayout newImageLayout,
-                    vk::ImageSubresourceRange subresourceRange,
-                    vk::PipelineStageFlags srcStageMask = vk::PipelineStageFlagBits::eAllCommands,
-                    vk::PipelineStageFlags dstStageMask = vk::PipelineStageFlagBits::eAllCommands);
-
-            void createCommandPool();
-            vk::CommandBuffer recordCommandBuffer(vk::CommandBufferAllocateInfo info = {});
-            void flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue);
+            vk::CommandBuffer recordGraphicsCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushGraphicsCommandBuffer(vk::CommandBuffer& cmdBuffer);
+            vk::CommandBuffer recordTransferCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushTransferCommandBuffer(vk::CommandBuffer& cmdBuffer);
+            vk::CommandBuffer recordComputeCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushComputeCommandBuffer(vk::CommandBuffer& cmdBuffer);
 
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
 
@@ -79,7 +91,7 @@ namespace vlb {
 
         private:
 
-            vk::DebugUtilsMessengerEXT debugMessenger;
+            vk::UniqueDebugUtilsMessengerEXT debugMessenger;
             std::vector<const char*> instanceLayers;
             std::vector<const char*> instanceExtensions;
             std::vector<const char*> deviceLayers;
@@ -90,9 +102,26 @@ namespace vlb {
 
         public:
 
-            Application();
+            static uint32_t getMemoryType(const vk::PhysicalDevice& physicalDevice, const vk::MemoryRequirements& memoryRequirements,
+                    const vk::MemoryPropertyFlags& memoryProperties);
+
+            static void setImageLayout(
+                    vk::CommandBuffer cmdbuffer,
+                    vk::Image image,
+                    vk::ImageLayout oldImageLayout,
+                    vk::ImageLayout newImageLayout,
+                    vk::ImageSubresourceRange subresourceRange,
+                    vk::PipelineStageFlags srcStageMask = vk::PipelineStageFlagBits::eAllCommands,
+                    vk::PipelineStageFlags dstStageMask = vk::PipelineStageFlagBits::eAllCommands);
+
+            static vk::CommandBuffer recordCommandBuffer(vk::Device device, vk::CommandPool commandPool, vk::CommandBufferAllocateInfo info = {});
+            static void flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue);
+
+            static Buffer createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size, vk::BufferUsageFlags usage,
+                    vk::MemoryPropertyFlags memoryProperty, void* data);
+
+            Application(bool isGraphical = true);
             Application(const Application& other) = delete;
-            ~Application();
     };
 
 }

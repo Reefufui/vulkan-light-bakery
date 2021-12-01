@@ -79,7 +79,7 @@ namespace vlb {
         return false;
     }
 
-    void Application::pushPresentationExtensions()
+    void Application::pushExtentionsForGraphics()
     {
         uint32_t glfwExtensionsCount = 0;
         const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
@@ -100,14 +100,14 @@ namespace vlb {
 
     void Application::initDebugReportCallback()
     {
-        assert(this->instance);
+        assert(this->instance.get());
 
         pfnVkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-                this->instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));
+                this->instance.get().getProcAddr("vkCreateDebugUtilsMessengerEXT"));
         assert(pfnVkCreateDebugUtilsMessengerEXT);
 
         pfnVkDestroyDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-                this->instance.getProcAddr( "vkDestroyDebugUtilsMessengerEXT" ) );
+                this->instance.get().getProcAddr( "vkDestroyDebugUtilsMessengerEXT" ) );
         assert(pfnVkDestroyDebugUtilsMessengerEXT);
 
         vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
@@ -116,29 +116,36 @@ namespace vlb {
                 | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
                 | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 
-        this->debugMessenger = this->instance.createDebugUtilsMessengerEXT(
+        this->debugMessenger = this->instance.get().createDebugUtilsMessengerEXTUnique(
                 vk::DebugUtilsMessengerCreateInfoEXT({}, severityFlags, messageTypeFlags, &debugMessageFunc));
     }
 
     void Application::createDevice(size_t physicalDeviceIdx)
     {
-        assert(this->instance);
+        assert(this->instance.get());
 
-        std::vector<vk::PhysicalDevice> devices = this->instance.enumeratePhysicalDevices();
+        std::vector<vk::PhysicalDevice> devices = this->instance.get().enumeratePhysicalDevices();
         assert(devices.size());
         this->physicalDevice = devices[physicalDeviceIdx];
         this->physicalDeviceMemoryProperties = this->physicalDevice.getMemoryProperties();
 
+        setQueueFamilyIndices();
         float queuePriorities = 1.f;
-        vk::DeviceQueueCreateInfo queueCreateInfo{};
-        queueCreateInfo
-            .setQueueFamilyIndex(getQueueFamilyIndex())
-            .setQueueCount(1)
-            .setPQueuePriorities(&queuePriorities);
+        std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos(3);
+        for (auto& info : queueCreateInfos)
+        {
+            info.setQueueCount(1).setPQueuePriorities(&queuePriorities);
+        }
+        queueCreateInfos[0]
+            .setQueueFamilyIndex(this->queueFamilyIndex.graphics);
+        queueCreateInfos[1]
+            .setQueueFamilyIndex(this->queueFamilyIndex.transfer);
+        queueCreateInfos[2]
+            .setQueueFamilyIndex(this->queueFamilyIndex.compute);
 
         vk::DeviceCreateInfo deviceCreateInfo{};
         deviceCreateInfo
-            .setQueueCreateInfos(queueCreateInfo)
+            .setQueueCreateInfos(queueCreateInfos)
             .setPEnabledExtensionNames(this->deviceExtensions)
             .setPEnabledLayerNames(this->deviceLayers);
 
@@ -156,49 +163,81 @@ namespace vlb {
             };
 
         this->physicalDevice.getFeatures2(&c.get<vk::PhysicalDeviceFeatures2>());
-        this->device = this->physicalDevice.createDevice(c.get<vk::DeviceCreateInfo>());
+        this->device = this->physicalDevice.createDeviceUnique(c.get<vk::DeviceCreateInfo>());
 
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(this->device);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(this->device.get());
     }
 
-    uint32_t Application::getQueueFamilyIndex()
+    void Application::setQueueFamilyIndices()
     {
         auto queueFamilies = this->physicalDevice.getQueueFamilyProperties();
-        auto queueFlag{ getQueueFlag() };
 
-        uint32_t index = 0;
-        for (auto& prop : queueFamilies)
+        for (int i{}; i < queueFamilies.size(); ++i)
         {
-            if (prop.queueCount > 0 && (prop.queueFlags & queueFlag))
+            auto& prop = queueFamilies[i];
+            if (prop.queueCount > 0)
             {
-                break;
+                if ((prop.queueFlags & vk::QueueFlagBits::eGraphics) && this->queueFamilyIndex.graphics == -1)
+                {
+                    this->queueFamilyIndex.graphics = i;
+                }
+                else if ((prop.queueFlags & vk::QueueFlagBits::eTransfer) && this->queueFamilyIndex.transfer == -1)
+                {
+                    this->queueFamilyIndex.transfer = i;
+                }
+                else if ((prop.queueFlags & vk::QueueFlagBits::eCompute) && this->queueFamilyIndex.compute == -1)
+                {
+                    this->queueFamilyIndex.compute = i;
+                }
             }
-            ++index;
         }
 
-        assert(index != queueFamilies.size());
+        if (queueFamilyIndex.graphics != -1)
+        {
+            auto& computeIdx  = this->queueFamilyIndex.compute;
+            auto& transferIdx = this->queueFamilyIndex.transfer;
+            computeIdx  = computeIdx  == -1 ? this->queueFamilyIndex.graphics : computeIdx;
+            transferIdx = transferIdx == -1 ? this->queueFamilyIndex.graphics : transferIdx;
+        }
+        else
+        {
+            throw std::runtime_error("could not find graphics queue!");
+        }
 
-        return index;
+        std::cout << "graphics queue index: " << queueFamilyIndex.graphics
+            << "; transfer queue index: " << queueFamilyIndex.transfer
+            << "; compute queue index: " << queueFamilyIndex.compute
+            << "\n";
     }
 
-    void Application::createCommandPool()
+    void Application::createCommandPools()
     {
         vk::CommandPoolCreateInfo poolInfo{};
-        poolInfo
-            .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
-            .setQueueFamilyIndex(getQueueFamilyIndex());
+        poolInfo.setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
 
-        this->commandPool = this->device.createCommandPool(poolInfo, nullptr);
+        poolInfo.setQueueFamilyIndex(this->queueFamilyIndex.graphics);
+        this->commandPool.graphics = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
+        poolInfo.setQueueFamilyIndex(this->queueFamilyIndex.transfer);
+        this->commandPool.transfer = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
+        poolInfo.setQueueFamilyIndex(this->queueFamilyIndex.compute);
+        this->commandPool.compute  = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
     }
 
-    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags memoryProperties)
+    uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags& memoryProperties)
     {
+        return getMemoryType(this->physicalDevice, memoryRequirements, memoryProperties);
+    }
+
+    uint32_t Application::getMemoryType(const vk::PhysicalDevice& physicalDevice, const vk::MemoryRequirements& memoryRequirements,
+            const vk::MemoryPropertyFlags& memoryProperties)
+    {
+        auto physicalDeviceMemoryProperties = physicalDevice.getMemoryProperties();
         int32_t result{-1};
         for (uint32_t i{}; i < VK_MAX_MEMORY_TYPES; ++i)
         {
             if (memoryRequirements.memoryTypeBits & (1 << i))
             {
-                if ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties)
+                if ((physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryProperties) == memoryProperties)
                 {
                     result = i;
                     break;
@@ -210,18 +249,48 @@ namespace vlb {
         return result;
     }
 
-    vk::CommandBuffer Application::recordCommandBuffer(vk::CommandBufferAllocateInfo info)
+    vk::CommandBuffer Application::recordGraphicsCommandBuffer(vk::CommandBufferAllocateInfo info)
+    {
+        return recordCommandBuffer(this->device.get(), this->commandPool.graphics.get(), info);
+    }
+
+    vk::CommandBuffer Application::recordTransferCommandBuffer(vk::CommandBufferAllocateInfo info)
+    {
+        return recordCommandBuffer(this->device.get(), this->commandPool.transfer.get(), info);
+    }
+
+    vk::CommandBuffer Application::recordComputeCommandBuffer(vk::CommandBufferAllocateInfo info)
+    {
+        return recordCommandBuffer(this->device.get(), this->commandPool.compute.get(), info);
+    }
+
+    vk::CommandBuffer Application::recordCommandBuffer(vk::Device device, vk::CommandPool commandPool, vk::CommandBufferAllocateInfo info)
     {
         auto passed = info == vk::CommandBufferAllocateInfo{};
-        info = passed ? vk::CommandBufferAllocateInfo(this->commandPool, vk::CommandBufferLevel::ePrimary, 1) : info;
+        info = passed ? vk::CommandBufferAllocateInfo(commandPool, vk::CommandBufferLevel::ePrimary, 1) : info;
 
-        vk::CommandBuffer cmdBuffer = this->device.allocateCommandBuffers(info).front();
+        vk::CommandBuffer cmdBuffer = device.allocateCommandBuffers(info).front();
         cmdBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
         return cmdBuffer;
     }
 
-    void Application::flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue)
+    void Application::flushGraphicsCommandBuffer(vk::CommandBuffer& cmdBuffer)
+    {
+        flushCommandBuffer(this->device.get(), this->commandPool.graphics.get(), cmdBuffer, this->queue.graphics);
+    }
+
+    void Application::flushTransferCommandBuffer(vk::CommandBuffer& cmdBuffer)
+    {
+        flushCommandBuffer(this->device.get(), this->commandPool.transfer.get(), cmdBuffer, this->queue.transfer);
+    }
+
+    void Application::flushComputeCommandBuffer(vk::CommandBuffer& cmdBuffer)
+    {
+        flushCommandBuffer(this->device.get(), this->commandPool.compute.get(), cmdBuffer, this->queue.compute);
+    }
+
+    void Application::flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue)
     {
         cmdBuffer.end();
         vk::SubmitInfo submitInfo{};
@@ -229,10 +298,10 @@ namespace vlb {
             .setCommandBufferCount(1)
             .setPCommandBuffers(&cmdBuffer);
 
-        vk::Fence fence = this->device.createFence(vk::FenceCreateInfo());
+        vk::Fence fence = device.createFence(vk::FenceCreateInfo());
         queue.submit(submitInfo, fence);
         try {
-            auto r = this->device.waitForFences(fence, false, 1000000000);
+            auto r = device.waitForFences(fence, false, 1000000000);
             if (r != vk::Result::eSuccess) std::cout << "flushing failed!\n";
         }
         catch (std::exception const &e)
@@ -240,8 +309,8 @@ namespace vlb {
             std::cout << e.what() << "\n";
         }
 
-        this->device.destroy(fence);
-        this->device.freeCommandBuffers(this->commandPool, 1, &cmdBuffer);
+        device.destroy(fence);
+        device.freeCommandBuffers(commandPool, 1, &cmdBuffer);
     }
 
     void Application::setImageLayout(
@@ -333,7 +402,7 @@ namespace vlb {
             .read(code.data(), fileSize);
         spvFile.close();
 
-        return this->device.createShaderModuleUnique(
+        return this->device.get().createShaderModuleUnique(
                 vk::ShaderModuleCreateInfo{}
                 .setCodeSize(code.size())
                 .setPCode(reinterpret_cast<const uint32_t*>(code.data())) );
@@ -341,36 +410,44 @@ namespace vlb {
 
     Application::Buffer Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
     {
+        return createBuffer(this->device.get(), this->physicalDevice, size, usage, memoryProperty, data);
+    }
+
+    Application::Buffer Application::createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size,
+            vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
+    {
+        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
         Buffer buffer{};
-        buffer.handle = this->device.createBufferUnique(
+        buffer.handle = device.createBufferUnique(
                 vk::BufferCreateInfo{}
                 .setSize(size)
                 .setUsage(usage)
-                .setQueueFamilyIndexCount(0)
+                .setSharingMode(vk::SharingMode::eConcurrent)
+                .setQueueFamilyIndices(queueFamilyIndices)
                 );
 
-        auto memoryRequirements = this->device.getBufferMemoryRequirements(buffer.handle.get());
+        auto memoryRequirements = device.getBufferMemoryRequirements(buffer.handle.get());
         vk::MemoryAllocateFlagsInfo memoryFlagsInfo{};
         if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress)
         {
             memoryFlagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
         }
 
-        buffer.memory = this->device.allocateMemoryUnique(
+        buffer.memory = device.allocateMemoryUnique(
                 vk::MemoryAllocateInfo{}
                 .setAllocationSize(memoryRequirements.size)
-                .setMemoryTypeIndex(Application::getMemoryType(memoryRequirements, memoryProperty))
+                .setMemoryTypeIndex(getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
                 .setPNext(&memoryFlagsInfo)
                 );
-        this->device.bindBufferMemory(buffer.handle.get(), buffer.memory.get(), 0);
+        device.bindBufferMemory(buffer.handle.get(), buffer.memory.get(), 0);
 
         if (data)
         {
             if (memoryProperty & vk::MemoryPropertyFlagBits::eHostVisible)
             {
-                void* dataPtr = this->device.mapMemory(buffer.memory.get(), 0, size);
+                void* dataPtr = device.mapMemory(buffer.memory.get(), 0, size);
                 memcpy(dataPtr, data, static_cast<size_t>(size));
-                this->device.unmapMemory(buffer.memory.get());
+                device.unmapMemory(buffer.memory.get());
             }
             else if (memoryProperty & vk::MemoryPropertyFlagBits::eDeviceLocal)
             {
@@ -383,7 +460,7 @@ namespace vlb {
             }
         }
 
-        buffer.deviceAddress = this->device.getBufferAddressKHR({buffer.handle.get()});
+        buffer.deviceAddress = device.getBufferAddressKHR({buffer.handle.get()});
 
         return buffer;
     }
@@ -430,22 +507,29 @@ namespace vlb {
         std::for_each(extensionsToCheck.begin(), extensionsToCheck.end(), checkExtension);
     }
 
-    Application::Application()
+    void Application::getQueues()
+    {
+        this->queue.graphics = this->device.get().getQueue(this->queueFamilyIndex.graphics, 0);
+        this->queue.transfer = this->device.get().getQueue(this->queueFamilyIndex.transfer, 0);
+        this->queue.compute  = this->device.get().getQueue(this->queueFamilyIndex.compute, 0);
+    }
+
+    Application::Application(bool isGraphical)
     {
 #ifdef DEBUG
         this->instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
         this->instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
         this->instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
-        // TODO: create instance and devices here
-    }
-
-    Application::~Application()
-    {
-        this->device.destroy(this->commandPool);
-        this->device.destroy();
-        this->instance.destroyDebugUtilsMessengerEXT(this->debugMessenger);
-        this->instance.destroy();
+        if (isGraphical)
+        {
+            glfwInit();
+            pushExtentionsForGraphics();
+        }
+        createInstance();
+        createDevice();
+        createCommandPools();
+        getQueues();
     }
 
     void Application::createInstance()
@@ -460,9 +544,9 @@ namespace vlb {
         vk::InstanceCreateInfo instanceCreateInfo(vk::InstanceCreateFlags(), &applicationInfo,
                 uint32_t(this->instanceLayers.size()), this->instanceLayers.data(),
                 uint32_t(this->instanceExtensions.size()), this->instanceExtensions.data());
-        this->instance = vk::createInstance(instanceCreateInfo);
+        this->instance = vk::createInstanceUnique(instanceCreateInfo);
 
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(this->instance);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(this->instance.get());
 
 #ifdef DEBUG
         initDebugReportCallback();

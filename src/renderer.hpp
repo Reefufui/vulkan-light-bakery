@@ -17,7 +17,6 @@ namespace vlb {
                 void operator()(GLFWwindow* ptr)
                 {
                     glfwDestroyWindow(ptr);
-                    glfwTerminate();
                 }
             };
 
@@ -27,8 +26,6 @@ namespace vlb {
 
             UniqueWindow createWindow(const int& windowWidth = 480, const int& windowHeight = 480);
             vk::UniqueSurfaceKHR createSurface();
-            vk::QueueFlagBits getQueueFlag() override;
-            bool isSurfaceSupported(const vk::UniqueSurfaceKHR& surface);
             vk::UniqueSwapchainKHR createSwapchain();
             void createSwapchainResourses();
             void createSyncObjects();
@@ -37,7 +34,6 @@ namespace vlb {
             void initUI();
 
         protected:
-            vk::Queue            graphicsQueue;
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
             vk::Format           depthFormat{vk::Format::eD16Unorm};
             vk::ColorSpaceKHR    surfaceColorSpace{vk::ColorSpaceKHR::eSrgbNonlinear};
