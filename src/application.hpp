@@ -44,26 +44,46 @@ namespace vlb {
             vk::UniqueInstance    instance;
             vk::PhysicalDevice    physicalDevice;
             vk::UniqueDevice      device;
-            vk::UniqueCommandPool commandPool;
 
             vk::DynamicLoader  dl;
 
             void pushExtentionsForGraphics();
             void initDebugReportCallback();
 
-            //TODO: mulitple queue families
-            vk::QueueFlagBits getQueueFlag() {return vk::QueueFlagBits::eGraphics;};
-            uint32_t getQueueFamilyIndex();
+            struct QueueFamilyIndex
+            {
+                uint32_t graphics = -1;
+                uint32_t transfer = -1;
+                uint32_t compute = -1;
+            } queueFamilyIndex;
+            struct Queue
+            {
+                vk::Queue graphics;
+                vk::Queue transfer;
+                vk::Queue compute;
+            } queue;
+            void setQueueFamilyIndices();
+            void getQueues();
 
             void createInstance();
             void createDevice(size_t physicalDeviceIdx = 0);
-            void createCommandPool();
+            void createCommandPools();
+            struct CommandPool
+            {
+                vk::UniqueCommandPool graphics;
+                vk::UniqueCommandPool transfer;
+                vk::UniqueCommandPool compute;
+            } commandPool;
 
             vk::PhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
             uint32_t getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags& memoryProperties);
 
-            vk::CommandBuffer recordCommandBuffer(vk::CommandBufferAllocateInfo info = {});
-            void flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue);
+            vk::CommandBuffer recordGraphicsCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushGraphicsCommandBuffer(vk::CommandBuffer& cmdBuffer);
+            vk::CommandBuffer recordTransferCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushTransferCommandBuffer(vk::CommandBuffer& cmdBuffer);
+            vk::CommandBuffer recordComputeCommandBuffer(vk::CommandBufferAllocateInfo info = {});
+            void flushComputeCommandBuffer(vk::CommandBuffer& cmdBuffer);
 
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
 

@@ -97,9 +97,9 @@ namespace vlb {
             .setFirstVertex(0)
             .setTransformOffset(0);
 
-        auto commandBuffer = Application::recordCommandBuffer();
+        auto commandBuffer = Application::recordComputeCommandBuffer();
         commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
-        flushCommandBuffer(commandBuffer, this->graphicsQueue);
+        flushComputeCommandBuffer(commandBuffer);
 
         this->blas.buffer.deviceAddress = this->device.get().getAccelerationStructureAddressKHR({ this->blas.handle.get() });
     }
@@ -182,25 +182,30 @@ namespace vlb {
             .setFirstVertex(0)
             .setTransformOffset(0);
 
-        auto commandBuffer = Application::recordCommandBuffer();
+        auto commandBuffer = Application::recordComputeCommandBuffer();
         commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
-        flushCommandBuffer(commandBuffer, this->graphicsQueue);
+        flushComputeCommandBuffer(commandBuffer);
 
         this->tlas.buffer.deviceAddress = this->device.get().getAccelerationStructureAddressKHR({ this->tlas.handle.get() });
     }
 
     void Raytracer::createStorageImage()
     {
+        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
         vk::ImageCreateInfo imageInfo{};
-        imageInfo.imageType = vk::ImageType::e2D;
-        imageInfo.format = this->surfaceFormat;
-        imageInfo.extent = this->surfaceExtent;
-        imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
-        imageInfo.samples = vk::SampleCountFlagBits::e1;
-        imageInfo.tiling = vk::ImageTiling::eOptimal;
-        imageInfo.usage = vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage;
-        imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+        imageInfo
+            .setImageType(vk::ImageType::e2D)
+            .setFormat(this->surfaceFormat)
+            .setExtent(this->surfaceExtent)
+            .setMipLevels(1)
+            .setArrayLayers(1)
+            .setSamples(vk::SampleCountFlagBits::e1)
+            .setTiling(vk::ImageTiling::eOptimal)
+            .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage)
+            .setInitialLayout(vk::ImageLayout::eUndefined)
+            .setSharingMode(vk::SharingMode::eConcurrent)
+            .setQueueFamilyIndices(queueFamilyIndices);
+
         this->rayGenStorage.handle = this->device.get().createImageUnique(imageInfo);
 
         vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eDeviceLocal;
@@ -230,10 +235,11 @@ namespace vlb {
         imageViewInfo.image = this->rayGenStorage.handle.get();
         this->rayGenStorage.imageView = this->device.get().createImageViewUnique(imageViewInfo);
 
-        vk::CommandBuffer commandBuffer = recordCommandBuffer();
+        // TODO
+        vk::CommandBuffer commandBuffer = recordTransferCommandBuffer();
         Application::setImageLayout(commandBuffer, this->rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
                 { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-        flushCommandBuffer(commandBuffer, this->graphicsQueue);
+        flushTransferCommandBuffer(commandBuffer);
     }
 
     void Raytracer::createUniformBuffer()
@@ -528,7 +534,7 @@ namespace vlb {
             .setCommandBuffers(this->drawCommandBuffers[imageIndex].get())
             .setSignalSemaphores(this->renderFinishedSemaphores[this->currentFrame].get());
 
-        this->graphicsQueue.submit(submitInfo, this->inFlightFences[this->currentFrame]);
+        this->queue.graphics.submit(submitInfo, this->inFlightFences[this->currentFrame]);
 
         Renderer::present(imageIndex);
     }

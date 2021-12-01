@@ -129,17 +129,23 @@ namespace vlb {
         this->physicalDevice = devices[physicalDeviceIdx];
         this->physicalDeviceMemoryProperties = this->physicalDevice.getMemoryProperties();
 
-        // TODO have multiple queues for graphics, compute and transfer
+        setQueueFamilyIndices();
         float queuePriorities = 1.f;
-        vk::DeviceQueueCreateInfo queueCreateInfo{};
-        queueCreateInfo
-            .setQueueFamilyIndex(getQueueFamilyIndex())
-            .setQueueCount(1)
-            .setPQueuePriorities(&queuePriorities);
+        std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos(3);
+        for (auto& info : queueCreateInfos)
+        {
+            info.setQueueCount(1).setPQueuePriorities(&queuePriorities);
+        }
+        queueCreateInfos[0]
+            .setQueueFamilyIndex(this->queueFamilyIndex.graphics);
+        queueCreateInfos[1]
+            .setQueueFamilyIndex(this->queueFamilyIndex.transfer);
+        queueCreateInfos[2]
+            .setQueueFamilyIndex(this->queueFamilyIndex.compute);
 
         vk::DeviceCreateInfo deviceCreateInfo{};
         deviceCreateInfo
-            .setQueueCreateInfos(queueCreateInfo)
+            .setQueueCreateInfos(queueCreateInfos)
             .setPEnabledExtensionNames(this->deviceExtensions)
             .setPEnabledLayerNames(this->deviceLayers);
 
@@ -162,34 +168,59 @@ namespace vlb {
         VULKAN_HPP_DEFAULT_DISPATCHER.init(this->device.get());
     }
 
-    uint32_t Application::getQueueFamilyIndex()
+    void Application::setQueueFamilyIndices()
     {
         auto queueFamilies = this->physicalDevice.getQueueFamilyProperties();
-        auto queueFlag{ getQueueFlag() };
 
-        uint32_t index = 0;
-        for (auto& prop : queueFamilies)
+        for (int i{}; i < queueFamilies.size(); ++i)
         {
-            if (prop.queueCount > 0 && (prop.queueFlags & queueFlag))
+            auto& prop = queueFamilies[i];
+            if (prop.queueCount > 0)
             {
-                break;
+                if ((prop.queueFlags & vk::QueueFlagBits::eGraphics) && this->queueFamilyIndex.graphics == -1)
+                {
+                    this->queueFamilyIndex.graphics = i;
+                }
+                else if ((prop.queueFlags & vk::QueueFlagBits::eTransfer) && this->queueFamilyIndex.transfer == -1)
+                {
+                    this->queueFamilyIndex.transfer = i;
+                }
+                else if ((prop.queueFlags & vk::QueueFlagBits::eCompute) && this->queueFamilyIndex.compute == -1)
+                {
+                    this->queueFamilyIndex.compute = i;
+                }
             }
-            ++index;
         }
 
-        assert(index != queueFamilies.size());
+        if (queueFamilyIndex.graphics != -1)
+        {
+            auto& computeIdx  = this->queueFamilyIndex.compute;
+            auto& transferIdx = this->queueFamilyIndex.transfer;
+            computeIdx  = computeIdx  == -1 ? this->queueFamilyIndex.graphics : computeIdx;
+            transferIdx = transferIdx == -1 ? this->queueFamilyIndex.graphics : transferIdx;
+        }
+        else
+        {
+            throw std::runtime_error("could not find graphics queue!");
+        }
 
-        return index;
+        std::cout << "graphics queue index: " << queueFamilyIndex.graphics
+            << "; transfer queue index: " << queueFamilyIndex.transfer
+            << "; compute queue index: " << queueFamilyIndex.compute
+            << "\n";
     }
 
-    void Application::createCommandPool()
+    void Application::createCommandPools()
     {
         vk::CommandPoolCreateInfo poolInfo{};
-        poolInfo
-            .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
-            .setQueueFamilyIndex(getQueueFamilyIndex());
+        poolInfo.setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
 
-        this->commandPool = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
+        poolInfo.setQueueFamilyIndex(this->queueFamilyIndex.graphics);
+        this->commandPool.graphics = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
+        poolInfo.setQueueFamilyIndex(this->queueFamilyIndex.transfer);
+        this->commandPool.transfer = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
+        poolInfo.setQueueFamilyIndex(this->queueFamilyIndex.compute);
+        this->commandPool.compute  = this->device.get().createCommandPoolUnique(poolInfo, nullptr);
     }
 
     uint32_t Application::getMemoryType(const vk::MemoryRequirements& memoryRequirements, const vk::MemoryPropertyFlags& memoryProperties)
@@ -218,9 +249,19 @@ namespace vlb {
         return result;
     }
 
-    vk::CommandBuffer Application::recordCommandBuffer(vk::CommandBufferAllocateInfo info)
+    vk::CommandBuffer Application::recordGraphicsCommandBuffer(vk::CommandBufferAllocateInfo info)
     {
-        return recordCommandBuffer(this->device.get(), this->commandPool.get(), info);
+        return recordCommandBuffer(this->device.get(), this->commandPool.graphics.get(), info);
+    }
+
+    vk::CommandBuffer Application::recordTransferCommandBuffer(vk::CommandBufferAllocateInfo info)
+    {
+        return recordCommandBuffer(this->device.get(), this->commandPool.transfer.get(), info);
+    }
+
+    vk::CommandBuffer Application::recordComputeCommandBuffer(vk::CommandBufferAllocateInfo info)
+    {
+        return recordCommandBuffer(this->device.get(), this->commandPool.compute.get(), info);
     }
 
     vk::CommandBuffer Application::recordCommandBuffer(vk::Device device, vk::CommandPool commandPool, vk::CommandBufferAllocateInfo info)
@@ -234,9 +275,19 @@ namespace vlb {
         return cmdBuffer;
     }
 
-    void Application::flushCommandBuffer(vk::CommandBuffer& cmdBuffer, vk::Queue queue)
+    void Application::flushGraphicsCommandBuffer(vk::CommandBuffer& cmdBuffer)
     {
-        flushCommandBuffer(this->device.get(), this->commandPool.get(), cmdBuffer, queue);
+        flushCommandBuffer(this->device.get(), this->commandPool.graphics.get(), cmdBuffer, this->queue.graphics);
+    }
+
+    void Application::flushTransferCommandBuffer(vk::CommandBuffer& cmdBuffer)
+    {
+        flushCommandBuffer(this->device.get(), this->commandPool.transfer.get(), cmdBuffer, this->queue.transfer);
+    }
+
+    void Application::flushComputeCommandBuffer(vk::CommandBuffer& cmdBuffer)
+    {
+        flushCommandBuffer(this->device.get(), this->commandPool.compute.get(), cmdBuffer, this->queue.compute);
     }
 
     void Application::flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue)
@@ -365,12 +416,14 @@ namespace vlb {
     Application::Buffer Application::createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size,
             vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
     {
+        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
         Buffer buffer{};
         buffer.handle = device.createBufferUnique(
                 vk::BufferCreateInfo{}
                 .setSize(size)
                 .setUsage(usage)
-                .setQueueFamilyIndexCount(0)
+                .setSharingMode(vk::SharingMode::eConcurrent)
+                .setQueueFamilyIndices(queueFamilyIndices)
                 );
 
         auto memoryRequirements = device.getBufferMemoryRequirements(buffer.handle.get());
@@ -454,6 +507,13 @@ namespace vlb {
         std::for_each(extensionsToCheck.begin(), extensionsToCheck.end(), checkExtension);
     }
 
+    void Application::getQueues()
+    {
+        this->queue.graphics = this->device.get().getQueue(this->queueFamilyIndex.graphics, 0);
+        this->queue.transfer = this->device.get().getQueue(this->queueFamilyIndex.transfer, 0);
+        this->queue.compute  = this->device.get().getQueue(this->queueFamilyIndex.compute, 0);
+    }
+
     Application::Application(bool isGraphical)
     {
 #ifdef DEBUG
@@ -461,7 +521,6 @@ namespace vlb {
         this->instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
         this->instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
-        // TODO: create instance and devices here
         if (isGraphical)
         {
             glfwInit();
@@ -469,7 +528,8 @@ namespace vlb {
         }
         createInstance();
         createDevice();
-        createCommandPool();
+        createCommandPools();
+        getQueues();
     }
 
     void Application::createInstance()

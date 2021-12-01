@@ -32,18 +32,12 @@ namespace vlb {
 
         auto surface = vk::UniqueSurfaceKHR(tmpSurface, surfaceDeleter);
 
-        if (!isSurfaceSupported(surface))
+        if (!this->physicalDevice.getSurfaceSupportKHR(this->queueFamilyIndex.graphics, *surface))
         {
             throw std::runtime_error("surface is not supported");
         }
 
         return surface;
-    }
-
-    bool Renderer::isSurfaceSupported(const vk::UniqueSurfaceKHR& surface)
-    {
-        assert(surface);
-        return this->physicalDevice.getSurfaceSupportKHR(getQueueFamilyIndex(), *surface);
     }
 
     vk::UniqueSwapchainKHR Renderer::createSwapchain()
@@ -126,7 +120,7 @@ namespace vlb {
     {
         return this->device.get().allocateCommandBuffersUnique(
                 vk::CommandBufferAllocateInfo{}
-                .setCommandPool(this->commandPool.get())
+                .setCommandPool(this->commandPool.graphics.get())
                 .setLevel(vk::CommandBufferLevel::ePrimary)
                 .setCommandBufferCount(this->swapChainImages.size())
                 );
@@ -148,7 +142,7 @@ namespace vlb {
 
     void Renderer::present(uint32_t imageIndex)
     {
-        auto result = this->graphicsQueue.presentKHR(
+        auto result = this->queue.graphics.presentKHR(
                 vk::PresentInfoKHR{}
                 .setWaitSemaphores(this->renderFinishedSemaphores[this->currentFrame].get())
                 .setSwapchains(this->swapchain.get())
@@ -163,7 +157,7 @@ namespace vlb {
 
     void Renderer::initUI()
     {
-        auto commandBuffer = Application::recordCommandBuffer();
+        auto commandBuffer = Application::recordGraphicsCommandBuffer();
         std::vector<vk::ImageView> swapchainImageViews2{};
         for (auto& siv : this->swapchainImageViews)
         {
@@ -176,14 +170,14 @@ namespace vlb {
                 this->instance.get(),
                 this->physicalDevice,
                 this->device.get(),
-                this->graphicsQueue,
+                this->queue.transfer,
                 swapchainImageViews2,
                 this->surfaceExtent,
                 this->surfaceFormat,
                 this->depthFormat
         };
         ui.init(uiInitInfo, commandBuffer);
-        flushCommandBuffer(commandBuffer, this->graphicsQueue);
+        flushGraphicsCommandBuffer(commandBuffer);
     }
 
     void Renderer::render()
@@ -210,8 +204,6 @@ namespace vlb {
         createSwapchainResourses();
         createDrawCommandBuffers();
         createSyncObjects();
-
-        this->graphicsQueue = this->device.get().getQueue(getQueueFamilyIndex(), 0);
     }
 
     Renderer::~Renderer()
