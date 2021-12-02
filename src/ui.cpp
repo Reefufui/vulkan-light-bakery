@@ -124,7 +124,6 @@ namespace vlb {
         this->window = info.window;
         this->instance = info.instance;
         this->physicalDevice = info.physicalDevice;
-        this->device = info.device;
         this->queue = info.queue;
         this->swapchainImageViews = info.swapchainImageViews;
         this->surfaceExtent = info.surfaceExtent;
@@ -183,6 +182,11 @@ namespace vlb {
         this->fileDialog.SetTypeFilters({ ".gltf" });
     }
 
+    ImGui::FileBrowser& UI::getFileDialog()
+    {
+        return this->fileDialog;
+    }
+
     void UI::draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer)
     {
         auto& imguiFrameBuffer = this->imguiFrameBuffers[imageIndex];
@@ -204,14 +208,9 @@ namespace vlb {
         ImGui::NewFrame();
         ImGui::Text("Vulkan Light Bakery");
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        if(ImGui::Button("Open"))
+        if (ImGui::Button("Open"))
             fileDialog.Open();
-        fileDialog.Display();
-        if(fileDialog.HasSelected())
-        {
-            std::cout << "Selected filename" << fileDialog.GetSelected().string() << std::endl;
-            fileDialog.ClearSelected();
-        }
+            fileDialog.Display();
         ImGui::Render();
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
         commandBuffer.endRenderPass();

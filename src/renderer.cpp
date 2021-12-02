@@ -176,19 +176,33 @@ namespace vlb {
                 this->surfaceFormat,
                 this->depthFormat
         };
-        ui.init(uiInitInfo, commandBuffer);
+        this->ui.init(uiInitInfo, commandBuffer);
         flushGraphicsCommandBuffer(commandBuffer);
+    }
+
+    void Renderer::initSceneManager()
+    {
+        auto sceneManagerInitInfo = SceneManager::InitInfo
+        {
+            this->physicalDevice,
+                this->device.get(),
+                this->queue.transfer,
+                &this->ui
+        };
+        this->sceneManager.init(sceneManagerInitInfo);
     }
 
     void Renderer::render()
     {
         initUI();
+        initSceneManager();
 
         while (!glfwWindowShouldClose(this->window.get()))
         {
             glfwPollEvents();
             //TODO: handle window resize here
             draw();
+            this->sceneManager.update();
             this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
         }
 

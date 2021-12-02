@@ -32,6 +32,7 @@ namespace vlb {
             virtual void draw() = 0;
             const int maxFramesInFlight = 2;
             void initUI();
+            void initSceneManager();
 
         protected:
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};

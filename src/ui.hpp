@@ -37,6 +37,9 @@ namespace vlb {
             vk::Format depthFormat;
 
         public:
+
+            ImGui::FileBrowser& getFileDialog();
+
             struct InterfaceInitInfo
             {
                 GLFWwindow*   window;
