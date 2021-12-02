@@ -57,12 +57,14 @@ namespace vlb {
             };
 
             Scene() = delete;
-            Scene(std::string& pathToScene);
+            Scene(std::string& filename);
+            const std::string& getName();
 
         private:
 
             tinygltf::Model model;
             tinygltf::TinyGLTF loader;
+            std::string name;
 
             void loadNode(Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model,
                     std::vector<uint32_t>& iBuffer, std::vector<Vertex>& vBuffer);
@@ -76,6 +78,8 @@ namespace vlb {
             vk::Device device;
             vk::Queue transferQueue;
             ImGui::FileBrowser* pFileDialog;
+            std::vector<std::string>* pSceneNames;
+            int* pSelectedSceneIndex;
 
             std::vector<Scene> scenes{};
 

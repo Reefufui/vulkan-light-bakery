@@ -4,6 +4,23 @@
 
 #include <iostream>
 
+namespace ImGui {
+    static auto vector_getter = [](void* vec, int idx, const char** out_text)
+    {
+        auto& vector = *static_cast<std::vector<std::string>*>(vec);
+        if (idx < 0 || idx >= static_cast<int>(vector.size())) { return false; }
+        *out_text = vector.at(idx).c_str();
+        return true;
+    };
+
+    bool Combo(const char* label, int* currIndex, std::vector<std::string>& values, int size)
+    {
+        if (values.empty()) { return false; }
+        return Combo(label, currIndex, vector_getter,
+                static_cast<void*>(&values), values.size(), size);
+    }
+}
+
 namespace vlb {
 
     void UI::createImguiRenderPass()
@@ -90,11 +107,11 @@ namespace vlb {
         this->device.bindImageMemory(this->depthBuffer.handle.get(), this->depthBuffer.memory.get(), 0);
 
         this->depthBuffer.imageView = this->device.createImageViewUnique(vk::ImageViewCreateInfo(vk::ImageViewCreateFlags(),
-                        this->depthBuffer.handle.get(),
-                        vk::ImageViewType::e2D,
-                        this->depthFormat,
-                        {},
-                        { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } ) );
+                    this->depthBuffer.handle.get(),
+                    vk::ImageViewType::e2D,
+                    this->depthFormat,
+                    {},
+                    { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } ) );
     }
 
     void UI::createImguiFrameBuffer()
@@ -175,16 +192,28 @@ namespace vlb {
 
         ImGui_ImplVulkan_Init(&init_info, this->imguiPass.get());
 
+        ImGuiIO& io = ImGui::GetIO();
+        io.Fonts->AddFontFromFileTTF("assets/Roboto-Medium.ttf", 20);
         ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
 
         this->fileDialog = ImGui::FileBrowser{};
         this->fileDialog.SetTitle("Choose model file");
-        this->fileDialog.SetTypeFilters({ ".gltf" });
+        this->fileDialog.SetTypeFilters({ ".gltf", ".glb" });
     }
 
     ImGui::FileBrowser& UI::getFileDialog()
     {
         return this->fileDialog;
+    }
+
+    std::vector<std::string>& UI::getSceneNames()
+    {
+        return this->sceneNames;
+    }
+
+    int& UI::getSelectedSceneIndex()
+    {
+        return this->selectedSceneIndex;
     }
 
     void UI::draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer)
@@ -206,11 +235,24 @@ namespace vlb {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        ImGui::Text("Vulkan Light Bakery");
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        if (ImGui::Button("Open"))
-            fileDialog.Open();
-            fileDialog.Display();
+
+        ImGui::Begin("Vulkan Light Bakery");
+        {
+            ImGui::Text("Choose model to render:");
+            ImGui::Combo("", &this->selectedSceneIndex, this->sceneNames, 20);
+            ImGui::SameLine();
+            if (ImGui::Button("+", {26, 26}))
+            {
+                fileDialog.Open();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("-", {26, 26}))
+                std::cout << "freeing resouces for the model\n";
+        }
+        ImGui::End();
+
+        fileDialog.Display();
+        ImGui::EndFrame();
         ImGui::Render();
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
         commandBuffer.endRenderPass();

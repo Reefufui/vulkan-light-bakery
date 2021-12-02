@@ -36,9 +36,14 @@ namespace vlb {
             vk::Format surfaceFormat;
             vk::Format depthFormat;
 
+            int selectedSceneIndex = 0;
+            std::vector<std::string> sceneNames{"..."};
+
         public:
 
             ImGui::FileBrowser& getFileDialog();
+            std::vector<std::string>& getSceneNames();
+            int& getSelectedSceneIndex();
 
             struct InterfaceInitInfo
             {

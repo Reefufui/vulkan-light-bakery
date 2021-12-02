@@ -3,6 +3,7 @@
 #include "scene_manager.hpp"
 
 #include <iostream>
+#include <filesystem>
 
 namespace vlb {
 
@@ -12,13 +13,26 @@ namespace vlb {
         std::cout << "creating node!\n";
     }
 
-    Scene::Scene(std::string& pathToScene)
+    Scene::Scene(std::string& filename)
     {
         std::string err;
         std::string warn;
 
-        //TODO: deal with binary versions of file format as well (.glb)
-        bool loaded = loader.LoadASCIIFromFile(&model, &err, &warn, pathToScene);
+        std::filesystem::path filePath = filename;
+
+        bool loaded{false};
+        if (filePath.extension() == ".gltf")
+        {
+            loaded = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+        }
+        else if (filePath.extension() == ".glb")
+        {
+            loaded = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+        }
+        else
+        {
+            assert(0);
+        }
 
         std::vector<uint32_t> indexBuffer;
         std::vector<Vertex> vertexBuffer;
@@ -35,7 +49,8 @@ namespace vlb {
 
         if (loaded)
         {
-            std::cout << "Parsed " << pathToScene << "!\n";
+            this->name = filePath.stem();
+            std::cout << "Parsed " << filePath.stem() << "!\n";
             const auto& scene = model.scenes[0];
             for (const auto& nodeIndex : scene.nodes)
             {
@@ -50,22 +65,30 @@ namespace vlb {
         }
     }
 
+    const std::string& Scene::getName()
+    {
+        return this->name;
+    }
+
     void SceneManager::init(InitInfo& info)
     {
         this->device = info.device;
         this->physicalDevice = info.physicalDevice;
         this->transferQueue = info.transferQueue;
         this->pFileDialog = &(info.pUI->getFileDialog());
+        this->pSceneNames = &(info.pUI->getSceneNames());
+        this->pSelectedSceneIndex = &(info.pUI->getSelectedSceneIndex());
     }
 
     void SceneManager::update()
     {
         if (this->pFileDialog->HasSelected())
         {
-            std::string pathToScene{};
-            std::cout << "Selected filename" << (pathToScene = this->pFileDialog->GetSelected().string()) << "\n";
+            std::string fileName{this->pFileDialog->GetSelected().string()};
+            scenes.push_back(Scene(fileName));
+            (*this->pSceneNames).push_back(scenes.back().getName());
             this->pFileDialog->ClearSelected();
-            scenes.push_back(Scene(pathToScene));
+            *this->pSelectedSceneIndex = static_cast<int>((*this->pSceneNames).size()) - 1;
         }
     }
 
