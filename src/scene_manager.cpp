@@ -256,12 +256,9 @@ namespace vlb {
         // "-"
         if (*this->pFreeScene)
         {
-            if (scenes.size() > 1)
-            {
-                scenes.erase(scenes.begin() + sceneIndex);
-                sceneNames.erase(sceneNames.begin() + sceneIndex);
-                sceneIndex = std::max(0, sceneIndex - 1);
-            }
+            scenes.erase(scenes.begin() + sceneIndex);
+            sceneNames.erase(sceneNames.begin() + sceneIndex);
+            sceneIndex = std::max(0, sceneIndex - 1);
 
             *this->pFreeScene = false;
             this->sceneChangedFlag = true;
