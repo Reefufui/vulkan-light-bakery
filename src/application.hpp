@@ -118,7 +118,7 @@ namespace vlb {
             static void flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue);
 
             static Buffer createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size, vk::BufferUsageFlags usage,
-                    vk::MemoryPropertyFlags memoryProperty, void* data);
+                    vk::MemoryPropertyFlags memoryProperty, void* data = nullptr);
 
             Application(bool isGraphical = true);
             Application(const Application& other) = delete;

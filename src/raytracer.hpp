@@ -13,7 +13,6 @@ namespace vlb {
             void createBLAS();
             void createTLAS();
             void createStorageImage();
-            void createUniformBuffer();
             void createRayTracingPipeline();
             void createShaderBindingTable();
             void createDescriptorSets();

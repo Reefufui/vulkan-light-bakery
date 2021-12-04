@@ -242,11 +242,6 @@ namespace vlb {
         flushTransferCommandBuffer(commandBuffer);
     }
 
-    void Raytracer::createUniformBuffer()
-    {
-        //TODO(glTF stage)
-    }
-
     void Raytracer::createRayTracingPipeline()
     {
         vk::DescriptorSetLayoutBinding accelerationStructureLayoutBinding{};

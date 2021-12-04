@@ -30,6 +30,8 @@ make -j 10
 ## References and Acknowledgments
  - [1] [The design and evolution of the UberBake light baking system](https://darioseyb.com/pdf/seyb20uberbake.pdf)
  - [2] [Vulkan HPP](https://github.com/KhronosGroup/Vulkan-Hpp)
- - [3] [Dear ImGui](https://github.com/ocornut/imgui)
- - [4] [TinyGLTF](https://github.com/syoyo/tinygltf.git)
+ - [3] [Vulkan Tutorial](https://vulkan-tutorial.com/)
+ - [4] [Dear ImGui](https://github.com/ocornut/imgui)
+ - [5] [TinyGLTF](https://github.com/syoyo/tinygltf.git)
+ - [6] [glTF-Tutorials](https://github.khronos.org/glTF-Tutorials/gltfTutorial/)
 
