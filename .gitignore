@@ -7,7 +7,6 @@
 *.vcxproj
 *.xcodeproj
 build
-assets
 *.spv
 
 .vs/

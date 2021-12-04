@@ -13,13 +13,15 @@
 
 namespace vlb {
 
-    class Scene
+    struct Scene_t;
+    typedef std::shared_ptr<Scene_t> Scene;
+    class Scene_t
     {
         public:
 
             struct Vertex
             {
-                glm::vec3 position;
+                glm::vec4 position;
                 glm::vec3 normal;
             };
 
@@ -28,36 +30,42 @@ namespace vlb {
                 // TODO(pbr stage)
             };
 
-            struct Primitive {
+            struct Primitive_t;
+            typedef std::shared_ptr<Primitive_t> Primitive;
+            struct Primitive_t {
                 uint32_t indexOffset;
                 uint32_t indexCount;
                 uint32_t vertexCount;
-                Material &material;
-                bool hasIndices;
             };
 
-            struct Mesh {
-                std::vector<Primitive*> primitives;
+            struct Mesh_t;
+            typedef std::shared_ptr<Mesh_t> Mesh;
+            struct Mesh_t {
+                std::vector<Primitive> primitives;
                 struct UniformBuffer {
                     Application::Buffer buffer;
-                    VkDescriptorBufferInfo descriptor;
-                    VkDescriptorSet descriptorSet;
-                    void *mapped;
+                    vk::DescriptorBufferInfo descriptor;
+                    vk::DescriptorSet descriptorSet;
+                    void* mapped;
                 } uniformBuffer;
             };
 
-            struct Node {
-                Node *parent;
+            struct Node_t;
+            typedef std::shared_ptr<Node_t> Node;
+            struct Node_t {
+                Node parent;
                 uint32_t index;
-                std::vector<Node*> children;
-                Mesh *mesh;
-                glm::vec3 translation{};
-                glm::vec3 scale{ 1.0f };
-                glm::quat rotation{};
+                std::vector<Node> children;
+                Mesh mesh;
+                glm::vec3 translation;
+                glm::vec3 scale;
+                glm::mat4 rotation;
+                glm::mat4 matrix;
             };
 
-            Scene() = delete;
-            Scene(std::string& filename);
+            Scene_t() = delete;
+            Scene_t(std::string& filename);
+            void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             const std::string& getName();
 
         private:
@@ -66,9 +74,15 @@ namespace vlb {
             tinygltf::TinyGLTF loader;
             std::string name;
 
-            void loadNode(Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model,
-                    std::vector<uint32_t>& iBuffer, std::vector<Vertex>& vBuffer);
+            Application::Buffer vertexBuffer;
+            Application::Buffer indexBuffer;
+            std::vector<uint32_t> indices;
+            std::vector<Vertex> vertices;
+            std::vector<Node> nodes;
+            std::vector<Node> linearNodes;
 
+            auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
+            void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
     };
 
     class SceneManager
@@ -77,6 +91,7 @@ namespace vlb {
             vk::PhysicalDevice physicalDevice;
             vk::Device device;
             vk::Queue transferQueue;
+            vk::CommandPool transferCommandPool;
             ImGui::FileBrowser* pFileDialog;
             std::vector<std::string>* pSceneNames;
             int* pSelectedSceneIndex;
@@ -89,6 +104,7 @@ namespace vlb {
                 vk::PhysicalDevice physicalDevice;
                 vk::Device device;
                 vk::Queue transferQueue;
+                vk::CommandPool transferCommandPool;
                 vlb::UI* pUI;
             };
 
@@ -97,6 +113,7 @@ namespace vlb {
 
             void init(InitInfo& info);
             void update();
+            Scene& getScene();
 
     };
 

@@ -449,18 +449,13 @@ namespace vlb {
                 memcpy(dataPtr, data, static_cast<size_t>(size));
                 device.unmapMemory(buffer.memory.get());
             }
-            else if (memoryProperty & vk::MemoryPropertyFlagBits::eDeviceLocal)
-            {
-                //TODO
-                std::cerr << "feature is not impleneted yet\n";
-            }
-            else
-            {
-                std::cerr << "do data copied to buffer!\n";
-            }
+            else assert(0);
         }
 
-        buffer.deviceAddress = device.getBufferAddressKHR({buffer.handle.get()});
+        if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress)
+        {
+            buffer.deviceAddress = device.getBufferAddressKHR({buffer.handle.get()});
+        }
 
         return buffer;
     }

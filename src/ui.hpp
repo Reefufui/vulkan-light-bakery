@@ -37,7 +37,7 @@ namespace vlb {
             vk::Format depthFormat;
 
             int selectedSceneIndex = 0;
-            std::vector<std::string> sceneNames{"..."};
+            std::vector<std::string> sceneNames{};
 
         public:
 

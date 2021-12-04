@@ -3,6 +3,7 @@
 #include "ui.hpp"
 
 #include <iostream>
+#include <filesystem>
 
 namespace ImGui {
     static auto vector_getter = [](void* vec, int idx, const char** out_text)
@@ -199,6 +200,11 @@ namespace vlb {
         this->fileDialog = ImGui::FileBrowser{};
         this->fileDialog.SetTitle("Choose model file");
         this->fileDialog.SetTypeFilters({ ".gltf", ".glb" });
+        std::filesystem::path modelsPath{"assets/models"};
+        if (std::filesystem::exists(modelsPath))
+        {
+            this->fileDialog.SetPwd(modelsPath);
+        }
     }
 
     ImGui::FileBrowser& UI::getFileDialog()
