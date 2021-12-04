@@ -457,6 +457,8 @@ namespace vlb {
             buffer.deviceAddress = device.getBufferAddressKHR({buffer.handle.get()});
         }
 
+        buffer.size = size;
+
         return buffer;
     }
 

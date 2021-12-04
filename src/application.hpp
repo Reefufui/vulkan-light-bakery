@@ -30,6 +30,7 @@ namespace vlb {
                 vk::UniqueBuffer         handle;
                 vk::UniqueDeviceMemory   memory;
                 vk::DeviceAddress        deviceAddress;
+                vk::DeviceSize           size;
             };
 
             struct Image

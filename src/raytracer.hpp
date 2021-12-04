@@ -18,6 +18,7 @@ namespace vlb {
             void createDescriptorSets();
             void recordDrawCommandBuffer(uint64_t imageIndex);
             void draw();
+            void reset();
 
             struct AccelerationStructure
             {

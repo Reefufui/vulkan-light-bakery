@@ -195,9 +195,6 @@ namespace vlb {
 
     void Renderer::render()
     {
-        initUI();
-        initSceneManager();
-
         while (!glfwWindowShouldClose(this->window.get()))
         {
             glfwPollEvents();
@@ -209,6 +206,7 @@ namespace vlb {
 
         this->device.get().waitIdle();
         ui.cleanup();
+        glfwTerminate();
     }
 
     Renderer::Renderer()
@@ -219,6 +217,9 @@ namespace vlb {
         createSwapchainResourses();
         createDrawCommandBuffers();
         createSyncObjects();
+
+        initUI();
+        initSceneManager();
     }
 
     Renderer::~Renderer()
@@ -227,7 +228,6 @@ namespace vlb {
         {
             this->device.get().destroy(this->inFlightFences[i]);
         }
-        glfwTerminate();
     }
 
 }

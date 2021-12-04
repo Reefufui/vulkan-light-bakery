@@ -12,42 +12,16 @@ namespace vlb {
 
     void Raytracer::createBLAS()
     {
-        /////////////////////////
-        // Hello triangle NOTE:(we will load glTF model after I set everything up)
-        /////////////////////////
-        struct Vertex {
-            float pos[3];
-        };
-        std::vector<Vertex> vertices = {
-            { {  1.0f,  1.0f, 0.0f } },
-            { { -1.0f,  1.0f, 0.0f } },
-            { {  0.0f, -1.0f, 0.0f } }
-        };
-        std::vector<uint32_t> indices = { 0, 1, 2 };
-        size_t vBufferSize = sizeof(Vertex)   * vertices.size();
-        size_t iBufferSize = sizeof(uint32_t) * indices.size();
-
-        vk::BufferUsageFlags bufferUsage{ vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
-                                        | vk::BufferUsageFlagBits::eShaderDeviceAddress
-                                        | vk::BufferUsageFlagBits::eStorageBuffer };
-        vk::MemoryPropertyFlags memoryProperty{ vk::MemoryPropertyFlagBits::eHostVisible
-                                              | vk::MemoryPropertyFlagBits::eHostCoherent };
-
-        Buffer vBuffer = Application::createBuffer(vBufferSize, bufferUsage, memoryProperty, vertices.data());
-        Buffer iBuffer = Application::createBuffer(iBufferSize, bufferUsage, memoryProperty, indices.data());
-
-        /////////////////////////
-        // Hello triangle
-        /////////////////////////
+        const auto& scene = this->sceneManager.getScene();
 
         vk::AccelerationStructureGeometryTrianglesDataKHR triangleData{};
         triangleData
             .setVertexFormat(vk::Format::eR32G32B32Sfloat)
-            .setVertexStride(sizeof(Vertex))
-            .setMaxVertex(vertices.size())
+            .setVertexStride(sizeof(Scene_t::Vertex))
+            .setMaxVertex(scene->vertices.size())
             .setIndexType(vk::IndexType::eUint32)
-            .setVertexData(vBuffer.deviceAddress)
-            .setIndexData(iBuffer.deviceAddress);
+            .setVertexData(scene->vertexBuffer.deviceAddress)
+            .setIndexData(scene->indexBuffer.deviceAddress);
 
         vk::AccelerationStructureGeometryKHR geometry{};
         geometry
@@ -61,21 +35,23 @@ namespace vlb {
             .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
             .setGeometries(geometry);
 
-        const uint32_t primitiveCount = 1;
+        const uint32_t primitiveCount = static_cast<uint32_t>(scene->indices.size()) / 3;
         auto buildSizesInfo = this->device.get().getAccelerationStructureBuildSizesKHR(
             vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
 
-        bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
+        vk::MemoryPropertyFlags memoryProperty{ vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent };
+        vk::BufferUsageFlags bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
             | vk::BufferUsageFlagBits::eShaderDeviceAddress };
 
         this->blas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
 
         this->blas.handle = this->device.get().createAccelerationStructureKHRUnique(
-            vk::AccelerationStructureCreateInfoKHR{}
-            .setBuffer(this->blas.buffer.handle.get())
-            .setSize(buildSizesInfo.accelerationStructureSize)
-            .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-        );
+                vk::AccelerationStructureCreateInfoKHR{}
+                .setBuffer(this->blas.buffer.handle.get())
+                .setSize(buildSizesInfo.accelerationStructureSize)
+                .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+                );
 
         bufferUsage = { vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress };
         memoryProperty = { vk::MemoryPropertyFlagBits::eDeviceLocal };
@@ -92,7 +68,7 @@ namespace vlb {
 
         vk::AccelerationStructureBuildRangeInfoKHR accelerationStructureBuildRangeInfo{};
         accelerationStructureBuildRangeInfo
-            .setPrimitiveCount(1)
+            .setPrimitiveCount(primitiveCount)
             .setPrimitiveOffset(0)
             .setFirstVertex(0)
             .setTransformOffset(0);
@@ -121,11 +97,11 @@ namespace vlb {
             .setAccelerationStructureReference(this->blas.buffer.deviceAddress);
 
         Buffer instancesBuffer = createBuffer(
-            sizeof(vk::AccelerationStructureInstanceKHR),
-            vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
-            | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            &accelerationStructureInstance);
+                sizeof(vk::AccelerationStructureInstanceKHR),
+                vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
+                | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                &accelerationStructureInstance);
 
         vk::AccelerationStructureGeometryInstancesDataKHR instancesData{};
         instancesData
@@ -432,6 +408,16 @@ namespace vlb {
 
     void Raytracer::recordDrawCommandBuffer(uint64_t imageIndex)
     {
+        if (this->sceneManager.sceneChanged())
+        {
+            reset();
+            createBLAS();
+            createTLAS();
+            createRayTracingPipeline();
+            createShaderBindingTable();
+            createDescriptorSets();
+        }
+
         auto& commandBuffer    = this->drawCommandBuffers[imageIndex];
         auto& swapChainImage   = this->swapChainImages[imageIndex];
 
@@ -532,6 +518,16 @@ namespace vlb {
         this->queue.graphics.submit(submitInfo, this->inFlightFences[this->currentFrame]);
 
         Renderer::present(imageIndex);
+    }
+
+    void Raytracer::reset()
+    {
+        this->device.get().waitIdle();
+        this->descriptorSet.reset();
+        this->descriptorPool.reset();
+        this->pipeline.reset();
+        this->pipelineLayout.reset();
+        this->descriptorSetLayout.reset();
     }
 
     Raytracer::Raytracer()

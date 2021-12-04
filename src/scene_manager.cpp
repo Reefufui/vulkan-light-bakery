@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <algorithm>
 
 namespace vlb {
 
@@ -162,7 +163,6 @@ namespace vlb {
         if (loaded)
         {
             this->name = filePath.stem();
-            std::cout << "Parsed " << filePath.stem() << "!\n";
             const auto& scene = this->model.scenes[0];
             for (const auto& nodeIndex : scene.nodes)
             {
@@ -218,11 +218,6 @@ namespace vlb {
         Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
     }
 
-    const std::string& Scene_t::getName()
-    {
-        return this->name;
-    }
-
     void SceneManager::init(InitInfo& info)
     {
         this->device = info.device;
@@ -232,19 +227,47 @@ namespace vlb {
         this->pFileDialog = &(info.pUI->getFileDialog());
         this->pSceneNames = &(info.pUI->getSceneNames());
         this->pSelectedSceneIndex = &(info.pUI->getSelectedSceneIndex());
+        this->pFreeScene = &(info.pUI->getFreeSceneFlag());
 
-        /*
         std::string fileName{"default_blender_cube.gltf"};
         Scene scene{new Scene_t(fileName)};
         scene->createBLASBuffers(info.device, info.physicalDevice, info.transferQueue, info.transferCommandPool);
         scenes.push_back(scene);
-        (*this->pSceneNames).push_back(scene->getName());
+        (*this->pSceneNames).push_back(scene->name);
         *this->pSelectedSceneIndex = 0;
-        */
     }
 
     void SceneManager::update()
     {
+        auto& sceneIndex = *this->pSelectedSceneIndex;
+        auto& sceneNames = *this->pSceneNames;
+
+        static int oldSceneIndex = 0;
+        if (oldSceneIndex != sceneIndex)
+        {
+            this->sceneChangedFlag = true;
+            oldSceneIndex = sceneIndex;
+        }
+        else
+        {
+            this->sceneChangedFlag = false;
+        }
+
+        // "-"
+        if (*this->pFreeScene)
+        {
+            if (scenes.size() > 1)
+            {
+                scenes.erase(scenes.begin() + sceneIndex);
+                sceneNames.erase(sceneNames.begin() + sceneIndex);
+                sceneIndex = std::max(0, sceneIndex - 1);
+            }
+
+            *this->pFreeScene = false;
+            this->sceneChangedFlag = true;
+        }
+
+        // "+"
         if (this->pFileDialog->HasSelected())
         {
             std::string fileName{this->pFileDialog->GetSelected().string()};
@@ -252,16 +275,24 @@ namespace vlb {
             scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
             //TODO: scene->loadTextures(this->device, this->transferQueue, this->transferCommandPool);
             scenes.push_back(scene);
-            (*this->pSceneNames).push_back(scene->getName());
-            *this->pSelectedSceneIndex = static_cast<int>((*this->pSceneNames).size()) - 1;
+
+            sceneNames.push_back(scene->name);
+            sceneIndex = static_cast<int>(sceneNames.size()) - 1;
 
             this->pFileDialog->ClearSelected();
+            this->sceneChangedFlag = true;
         }
+
     }
 
     Scene& SceneManager::getScene()
     {
         return scenes[*pSelectedSceneIndex];
+    }
+
+    bool SceneManager::sceneChanged()
+    {
+        return this->sceneChangedFlag;
     }
 
     SceneManager::SceneManager()

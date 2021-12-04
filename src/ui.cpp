@@ -222,6 +222,11 @@ namespace vlb {
         return this->selectedSceneIndex;
     }
 
+    bool& UI::getFreeSceneFlag()
+    {
+        return this->freeSceneFlag;
+    }
+
     void UI::draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer)
     {
         auto& imguiFrameBuffer = this->imguiFrameBuffers[imageIndex];
@@ -253,7 +258,9 @@ namespace vlb {
             }
             ImGui::SameLine();
             if (ImGui::Button("-", {26, 26}))
-                std::cout << "freeing resouces for the model\n";
+            {
+                this->freeSceneFlag = true;
+            }
         }
         ImGui::End();
 

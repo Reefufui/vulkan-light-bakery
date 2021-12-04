@@ -66,18 +66,18 @@ namespace vlb {
             Scene_t() = delete;
             Scene_t(std::string& filename);
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
-            const std::string& getName();
-
-        private:
-
-            tinygltf::Model model;
-            tinygltf::TinyGLTF loader;
-            std::string name;
 
             Application::Buffer vertexBuffer;
             Application::Buffer indexBuffer;
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
+            std::string name;
+
+        private:
+
+            tinygltf::Model model;
+            tinygltf::TinyGLTF loader;
+
             std::vector<Node> nodes;
             std::vector<Node> linearNodes;
 
@@ -95,6 +95,8 @@ namespace vlb {
             ImGui::FileBrowser* pFileDialog;
             std::vector<std::string>* pSceneNames;
             int* pSelectedSceneIndex;
+            bool* pFreeScene;
+            bool sceneChangedFlag;
 
             std::vector<Scene> scenes{};
 
@@ -114,6 +116,7 @@ namespace vlb {
             void init(InitInfo& info);
             void update();
             Scene& getScene();
+            bool sceneChanged();
 
     };
 
