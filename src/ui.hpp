@@ -37,6 +37,7 @@ namespace vlb {
             vk::Format depthFormat;
 
             int selectedSceneIndex = 0;
+            bool freeSceneFlag = false;
             std::vector<std::string> sceneNames{};
 
         public:
@@ -44,6 +45,7 @@ namespace vlb {
             ImGui::FileBrowser& getFileDialog();
             std::vector<std::string>& getSceneNames();
             int& getSelectedSceneIndex();
+            bool& getFreeSceneFlag();
 
             struct InterfaceInitInfo
             {

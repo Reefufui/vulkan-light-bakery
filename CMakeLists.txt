@@ -44,6 +44,7 @@ target_link_libraries(vklb ${CONAN_LIBS} -ldl)
 
 set(ASSETS_URL http://vulkan.gpuinfo.org/downloads/vulkan_asset_pack_gltf.zip)
 set(ASSETS_ZIP assets.zip)
+file(COPY_FILE src/vendor/default_blender_cube.gltf ${CMAKE_BINARY_DIR}/default_blender_cube.gltf)
 
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/assets)
     message(CHECK_START "Downloading assets")
