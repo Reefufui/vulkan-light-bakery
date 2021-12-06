@@ -203,11 +203,6 @@ namespace vlb {
         {
             throw std::runtime_error("could not find graphics queue!");
         }
-
-        std::cout << "graphics queue index: " << queueFamilyIndex.graphics
-            << "; transfer queue index: " << queueFamilyIndex.transfer
-            << "; compute queue index: " << queueFamilyIndex.compute
-            << "\n";
     }
 
     void Application::createCommandPools()

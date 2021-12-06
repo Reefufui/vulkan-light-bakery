@@ -66,7 +66,9 @@ namespace vlb {
             Scene_t() = delete;
             Scene_t(std::string& filename);
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
 
+            Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
             Application::Buffer indexBuffer;
             std::vector<uint32_t> indices;

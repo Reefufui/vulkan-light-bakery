@@ -39,6 +39,7 @@ namespace vlb {
             int selectedSceneIndex = 0;
             bool freeSceneFlag = false;
             std::vector<std::string> sceneNames{};
+            float lightIntensity = 1.0f;
 
         public:
 
@@ -46,6 +47,7 @@ namespace vlb {
             std::vector<std::string>& getSceneNames();
             int& getSelectedSceneIndex();
             bool& getFreeSceneFlag();
+            float& getLightIntensity();
 
             struct InterfaceInitInfo
             {

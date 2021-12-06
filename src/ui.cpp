@@ -293,6 +293,11 @@ namespace vlb {
         return this->freeSceneFlag;
     }
 
+    float& UI::getLightIntensity()
+    {
+        return this->lightIntensity;
+    }
+
     void UI::draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer)
     {
         auto& imguiFrameBuffer = this->imguiFrameBuffers[imageIndex];
@@ -330,6 +335,8 @@ namespace vlb {
                     this->freeSceneFlag = true;
                 }
             }
+
+            ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
         }
         ImGui::End();
 

@@ -12,9 +12,9 @@ void main()
     const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
     vec2 d = inUV * 2.0 - 1.0;
 
-    vec4 origin = vec4(0, 0, 10, 1);
-    vec4 target = vec4(d.x, d.y, 7, 1);
-    vec4 direction = vec4(normalize(target.xyz - origin.xyz), 0) ;
+    vec4 origin = vec4(0, 0, 10, 1); // * ubo.viewInverse
+    vec4 target = vec4(d.x, d.y, 8, 1); // * ubo.projInverse
+    vec4 direction = vec4(normalize(target.xyz - origin.xyz), 0); // * ubo.viewInverse
 
     float tmin = 0.001;
     float tmax = 10000.0;
@@ -24,15 +24,14 @@ void main()
     traceRayEXT(
             topLevelAS,
             gl_RayFlagsOpaqueEXT,
-            0xff, // cullMask
-            0,    // sbtRecordOffset
-            0,    // sbtRecordStride
-            0,    // missIndex
+            0xff,
+            0, 0, // stb offset and stride
+            0, // first shader of miss shader group
             origin.xyz,
             tmin,
             direction.xyz,
             tmax,
-            0     // payloadLocation
+            0 // payloadLocation
             );
 
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payLoad, 0.0));

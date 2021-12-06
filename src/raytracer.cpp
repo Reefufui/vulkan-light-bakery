@@ -215,16 +215,22 @@ namespace vlb {
 
     void Raytracer::createRayTracingPipeline()
     {
-        vk::DescriptorSetLayoutBinding tlasLayoutBinding{};
-        tlasLayoutBinding
+        std::vector<vk::DescriptorSetLayoutBinding> sceneBindings{
+            vk::DescriptorSetLayoutBinding{}
             .setBinding(0)
-            .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
-            .setDescriptorCount(1)
-            .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
+                .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
+            vk::DescriptorSetLayoutBinding{}
+            .setBinding(1)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
+        };
 
         this->descriptorSetLayout.scene = this->device.get().createDescriptorSetLayoutUnique(
                 vk::DescriptorSetLayoutCreateInfo{}
-                .setBindings(tlasLayoutBinding)
+                .setBindings(sceneBindings)
                 );
 
         vk::DescriptorSetLayoutBinding resultImageLayoutBinding{};
@@ -243,52 +249,61 @@ namespace vlb {
             this->descriptorSetLayout.scene.get(), this->descriptorSetLayout.resultImage.get()
         };
 
+        std::vector<vk::PushConstantRange> pushConstants{
+            { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(PushConstant) }
+        };
+
         this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
                 vk::PipelineLayoutCreateInfo{}
                 .setSetLayouts(layouts)
+                .setPushConstantRanges(pushConstants)
                 );
 
-        std::array<vk::PipelineShaderStageCreateInfo, 3> shaderStages{};
-        const uint32_t shaderIndexRaygen = 0;
-        const uint32_t shaderIndexMiss = 1;
-        const uint32_t shaderIndexClosestHit = 2;
+        enum StageIndices
+        {
+            eRaygen,
+            eMiss,
+            eClosestHit,
+            eShaderGroupCount
+        };
+        std::array<vk::PipelineShaderStageCreateInfo, StageIndices::eShaderGroupCount> shaderStages{};
 
         std::vector<vk::UniqueShaderModule> shaderModules{};
         std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shaderGroups{};
 
         shaderModules.push_back(Application::createShaderModule("shaders/basic.rgen.spv"));
-        shaderStages[shaderIndexRaygen] = vk::PipelineShaderStageCreateInfo{};
-        shaderStages[shaderIndexRaygen]
+        shaderStages[StageIndices::eRaygen] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eRaygen]
             .setStage(vk::ShaderStageFlagBits::eRaygenKHR)
             .setModule(shaderModules.back().get())
             .setPName("main");
         shaderGroups.push_back(
                 vk::RayTracingShaderGroupCreateInfoKHR{}
                 .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-                .setGeneralShader(shaderIndexRaygen)
+                .setGeneralShader(StageIndices::eRaygen)
                 .setClosestHitShader(VK_SHADER_UNUSED_KHR)
                 .setAnyHitShader(VK_SHADER_UNUSED_KHR)
                 .setIntersectionShader(VK_SHADER_UNUSED_KHR)
                 );
 
         shaderModules.push_back(Application::createShaderModule("shaders/basic.rmiss.spv"));
-        shaderStages[shaderIndexMiss] = vk::PipelineShaderStageCreateInfo{};
-        shaderStages[shaderIndexMiss]
+        shaderStages[StageIndices::eMiss] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eMiss]
             .setStage(vk::ShaderStageFlagBits::eMissKHR)
             .setModule(shaderModules.back().get())
             .setPName("main");
         shaderGroups.push_back(
                 vk::RayTracingShaderGroupCreateInfoKHR{}
                 .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-                .setGeneralShader(shaderIndexMiss)
+                .setGeneralShader(StageIndices::eMiss)
                 .setClosestHitShader(VK_SHADER_UNUSED_KHR)
                 .setAnyHitShader(VK_SHADER_UNUSED_KHR)
                 .setIntersectionShader(VK_SHADER_UNUSED_KHR)
                 );
 
         shaderModules.push_back(Application::createShaderModule("shaders/basic.rchit.spv"));
-        shaderStages[shaderIndexClosestHit] = vk::PipelineShaderStageCreateInfo{};
-        shaderStages[shaderIndexClosestHit]
+        shaderStages[StageIndices::eClosestHit] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eClosestHit]
             .setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
             .setModule(shaderModules.back().get())
             .setPName("main");
@@ -296,12 +311,12 @@ namespace vlb {
                 vk::RayTracingShaderGroupCreateInfoKHR{}
                 .setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
                 .setGeneralShader(VK_SHADER_UNUSED_KHR)
-                .setClosestHitShader(shaderIndexClosestHit)
+                .setClosestHitShader(StageIndices::eClosestHit)
                 .setAnyHitShader(VK_SHADER_UNUSED_KHR)
                 .setIntersectionShader(VK_SHADER_UNUSED_KHR)
                 );
 
-        this->shaderGroupsCount = static_cast<uint32_t>(shaderGroups.size());
+        this->shaderGroupsCount = static_cast<uint32_t>(StageIndices::eShaderGroupCount);
 
         auto[result, p] = this->device.get().createRayTracingPipelineKHRUnique(nullptr, nullptr,
                 vk::RayTracingPipelineCreateInfoKHR{}
@@ -375,7 +390,22 @@ namespace vlb {
             .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
             .setPNext(&tlasDescriptorInfo);
 
+        const auto& scene = this->sceneManager.getScene();
+
+        vk::DescriptorBufferInfo objDescDescriptorInfo{};
+        objDescDescriptorInfo
+            .setBuffer(scene->objDescBuffer.handle.get())
+            .setRange(VK_WHOLE_SIZE);
+
+        vk::WriteDescriptorSet objDescWriteDS{};
+        objDescWriteDS
+            .setDstSet(this->descriptorSet.scene.get())
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(1)
+            .setBufferInfo(objDescDescriptorInfo);
+
         this->device.get().updateDescriptorSets(tlasWriteDS, nullptr);
+        this->device.get().updateDescriptorSets(objDescWriteDS, nullptr);
     }
 
     void Raytracer::updateResultImageDescriptorSets()
@@ -399,7 +429,8 @@ namespace vlb {
     {
         std::vector<vk::DescriptorPoolSize> poolSizes = {
             {vk::DescriptorType::eAccelerationStructureKHR, 1},
-            {vk::DescriptorType::eStorageImage, 1}
+            {vk::DescriptorType::eStorageImage, 1},
+            {vk::DescriptorType::eStorageBuffer, 1}
         };
 
         this->descriptorPool = this->device.get().createDescriptorPoolUnique(
@@ -450,6 +481,13 @@ namespace vlb {
                 0,
                 {this->descriptorSet.scene.get(), this->descriptorSet.resultImage.get()},
                 nullptr
+                );
+
+        this->pc.lightIntensity = this->ui.getLightIntensity();
+        commandBuffer->pushConstants(
+                this->pipelineLayout.get(),
+                vk::ShaderStageFlagBits::eClosestHitKHR,
+                0, sizeof(PushConstant), &(this->pc)
                 );
 
         auto[width, height, depth] = this->surfaceExtent;

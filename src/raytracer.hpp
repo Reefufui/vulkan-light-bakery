@@ -39,6 +39,11 @@ namespace vlb {
             Image rayGenStorage;
             ShaderBindingTable sbt;
 
+            struct PushConstant
+            {
+                float lightIntensity;
+            } pc;
+
             //TODO: impl. better descriptor sets managment (maybe auto-generated)
             struct DSLayout
             {

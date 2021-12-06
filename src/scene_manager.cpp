@@ -69,6 +69,7 @@ namespace vlb {
                 {
                     Vertex vertex{};
                     vertex.position = glm::vec4(glm::make_vec3(&posBuffer[v * posByteStride]), 1.0f);
+                    vertex.position.y = - vertex.position.y;
                     vertex.normal = normalBuffer ? glm::normalize(glm::vec3(glm::make_vec3(&normalBuffer[v * normalByteStride]))) : glm::vec3(0.0f);
                     this->vertices.push_back(vertex);
                 }
@@ -206,14 +207,48 @@ namespace vlb {
             | vk::BufferUsageFlagBits::eStorageBuffer;
         memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
 
-        this->vertexBuffer = Application::createBuffer(device, physicalDevice, vertexBufferSize, usage | vk::BufferUsageFlagBits::eVertexBuffer, memoryProperty);
-        this->indexBuffer = Application::createBuffer(device, physicalDevice, indexBufferSize, usage | vk::BufferUsageFlagBits::eIndexBuffer, memoryProperty);
+        this->vertexBuffer = Application::createBuffer(device, physicalDevice, vertexBufferSize, usage, memoryProperty);
+        this->indexBuffer = Application::createBuffer(device, physicalDevice, indexBufferSize, usage, memoryProperty);
 
         vk::BufferCopy copyRegion{};
         copyRegion.setSize(vertexBufferSize);
         copyCmdBuffer.copyBuffer(stagingVertexBuffer.handle.get(), this->vertexBuffer.handle.get(), 1, &copyRegion);
         copyRegion.setSize(indexBufferSize);
         copyCmdBuffer.copyBuffer(stagingIndexBuffer.handle.get(), this->indexBuffer.handle.get(), 1, &copyRegion);
+
+        Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
+    }
+
+    void Scene_t::createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool)
+    {
+        struct ObjDesc
+        {
+            vk::DeviceAddress vertexBuffer;
+            vk::DeviceAddress indexBuffer;
+        } objDesc;
+
+        objDesc.vertexBuffer = device.getBufferAddressKHR(this->vertexBuffer.handle.get());
+        objDesc.indexBuffer  = device.getBufferAddressKHR(this->indexBuffer.handle.get());
+
+        auto copyCmdBuffer = Application::recordCommandBuffer(device, copyCommandPool);
+
+        vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+
+        auto size = sizeof(ObjDesc);
+
+        Application::Buffer staging = Application::createBuffer(device, physicalDevice, size, usage, memoryProperty, &objDesc);
+
+        usage = vk::BufferUsageFlagBits::eShaderDeviceAddress
+            | vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eStorageBuffer;
+        memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+        this->objDescBuffer = Application::createBuffer(device, physicalDevice, size, usage, memoryProperty);
+
+        vk::BufferCopy copyRegion{};
+        copyRegion.setSize(size);
+        copyCmdBuffer.copyBuffer(staging.handle.get(), this->objDescBuffer.handle.get(), 1, &copyRegion);
 
         Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
     }
@@ -232,6 +267,7 @@ namespace vlb {
         std::string fileName{"default_blender_cube.gltf"};
         Scene scene{new Scene_t(fileName)};
         scene->createBLASBuffers(info.device, info.physicalDevice, info.transferQueue, info.transferCommandPool);
+        scene->createObjectDescBuffer(info.device, info.physicalDevice, info.transferQueue, info.transferCommandPool);
         scenes.push_back(scene);
         (*this->pSceneNames).push_back(scene->name);
         *this->pSelectedSceneIndex = 0;
@@ -248,6 +284,7 @@ namespace vlb {
         // "-"
         if (*this->pFreeScene)
         {
+            this->device.waitIdle();
             scenes.erase(scenes.begin() + sceneIndex);
             sceneNames.erase(sceneNames.begin() + sceneIndex);
             sceneIndex = std::max(0, sceneIndex - 1);
@@ -264,6 +301,7 @@ namespace vlb {
             {
                 Scene scene{new Scene_t(fileName)};
                 scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
+                scene->createObjectDescBuffer(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
                 //TODO: scene->loadTextures(this->device, this->transferQueue, this->transferCommandPool);
                 scenes.push_back(scene);
 
