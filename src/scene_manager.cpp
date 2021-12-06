@@ -152,12 +152,12 @@ namespace vlb {
 
         if (!warn.empty())
         {
-            printf("Warn: %s\n", warn.c_str());
+            printf("Warn: %s", warn.c_str());
         }
 
         if (!err.empty())
         {
-            printf("Err: %s\n", err.c_str());
+            printf("Err: %s", err.c_str());
         }
 
         if (loaded)
@@ -206,8 +206,8 @@ namespace vlb {
             | vk::BufferUsageFlagBits::eStorageBuffer;
         memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
 
-        this->vertexBuffer = Application::createBuffer(device, physicalDevice, vertexBufferSize, usage, memoryProperty);
-        this->indexBuffer = Application::createBuffer(device, physicalDevice, indexBufferSize, usage, memoryProperty);
+        this->vertexBuffer = Application::createBuffer(device, physicalDevice, vertexBufferSize, usage | vk::BufferUsageFlagBits::eVertexBuffer, memoryProperty);
+        this->indexBuffer = Application::createBuffer(device, physicalDevice, indexBufferSize, usage | vk::BufferUsageFlagBits::eIndexBuffer, memoryProperty);
 
         vk::BufferCopy copyRegion{};
         copyRegion.setSize(vertexBufferSize);
@@ -235,6 +235,7 @@ namespace vlb {
         scenes.push_back(scene);
         (*this->pSceneNames).push_back(scene->name);
         *this->pSelectedSceneIndex = 0;
+        this->sceneChangedFlag = false;
     }
 
     void SceneManager::update()
@@ -242,16 +243,7 @@ namespace vlb {
         auto& sceneIndex = *this->pSelectedSceneIndex;
         auto& sceneNames = *this->pSceneNames;
 
-        static int oldSceneIndex = 0;
-        if (oldSceneIndex != sceneIndex)
-        {
-            this->sceneChangedFlag = true;
-            oldSceneIndex = sceneIndex;
-        }
-        else
-        {
-            this->sceneChangedFlag = false;
-        }
+        this->sceneChangedFlag = false;
 
         // "-"
         if (*this->pFreeScene)
@@ -268,18 +260,33 @@ namespace vlb {
         if (this->pFileDialog->HasSelected())
         {
             std::string fileName{this->pFileDialog->GetSelected().string()};
-            Scene scene{new Scene_t(fileName)};
-            scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-            //TODO: scene->loadTextures(this->device, this->transferQueue, this->transferCommandPool);
-            scenes.push_back(scene);
+            try
+            {
+                Scene scene{new Scene_t(fileName)};
+                scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
+                //TODO: scene->loadTextures(this->device, this->transferQueue, this->transferCommandPool);
+                scenes.push_back(scene);
 
-            sceneNames.push_back(scene->name);
-            sceneIndex = static_cast<int>(sceneNames.size()) - 1;
+                sceneNames.push_back(scene->name);
+                sceneIndex = static_cast<int>(sceneNames.size()) - 1;
+
+                this->sceneChangedFlag = true;
+            }
+            catch(std::runtime_error& e)
+            {
+                std::cerr << e.what() << "\n";
+            }
 
             this->pFileDialog->ClearSelected();
-            this->sceneChangedFlag = true;
         }
 
+        // "drop-down menu"
+        static int oldSceneIndex = 0;
+        if (oldSceneIndex != sceneIndex)
+        {
+            this->sceneChangedFlag = true;
+            oldSceneIndex = sceneIndex;
+        }
     }
 
     Scene& SceneManager::getScene()

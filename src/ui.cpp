@@ -200,8 +200,13 @@ namespace vlb {
         auto& style = ImGui::GetStyle();
         style.FrameRounding = 4.0f;
         style.WindowBorderSize = 0.0f;
-        style.PopupBorderSize = 0.0f;
+        style.PopupBorderSize = 1.0f;
+        style.ChildBorderSize = 1.0f;
         style.GrabRounding = 4.0f;
+        style.WindowRounding = 4.0f;
+        style.ChildRounding = 4.0f;
+        style.PopupRounding = 4.0f;
+        style.ScrollbarRounding = 4.0f;
 
         ImVec4* colors = ImGui::GetStyle().Colors;
         colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
