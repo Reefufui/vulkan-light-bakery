@@ -23,11 +23,32 @@ namespace vlb {
             {
                 glm::vec4 position;
                 glm::vec3 normal;
+                glm::vec2 uv0;
+                glm::vec2 uv1;
             };
 
             struct Material
             {
                 // TODO(pbr stage)
+            };
+
+            struct Sampler
+            {
+                vk::Filter magFilter = vk::Filter::eLinear;
+                vk::Filter minFilter = vk::Filter::eLinear;
+                vk::SamplerAddressMode addressModeU = vk::SamplerAddressMode::eRepeat;
+                vk::SamplerAddressMode addressModeV = vk::SamplerAddressMode::eRepeat;
+                vk::SamplerAddressMode addressModeW = vk::SamplerAddressMode::eRepeat;
+            };
+
+            struct Texture_t;
+            typedef std::shared_ptr<Texture_t> Texture;
+            struct Texture_t
+            {
+                Application::Image image;
+                uint32_t mipLevels;
+                vk::DescriptorImageInfo descriptor;
+                vk::UniqueSampler sampler;
             };
 
             struct Primitive_t;
@@ -67,6 +88,7 @@ namespace vlb {
             Scene_t(std::string& filename);
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
 
             Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
@@ -82,9 +104,12 @@ namespace vlb {
 
             std::vector<Node> nodes;
             std::vector<Node> linearNodes;
+            std::vector<Sampler> samplers;
+            std::vector<Texture> textures;
 
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
+            void loadSamplers();
     };
 
     class SceneManager
@@ -94,6 +119,8 @@ namespace vlb {
             vk::Device device;
             vk::Queue transferQueue;
             vk::CommandPool transferCommandPool;
+            vk::Queue graphicsQueue;
+            vk::CommandPool graphicsCommandPool;
             ImGui::FileBrowser* pFileDialog;
             std::vector<std::string>* pSceneNames;
             int* pSelectedSceneIndex;
@@ -109,6 +136,8 @@ namespace vlb {
                 vk::Device device;
                 vk::Queue transferQueue;
                 vk::CommandPool transferCommandPool;
+                vk::Queue graphicsQueue;
+                vk::CommandPool graphicsCommandPool;
                 vlb::UI* pUI;
             };
 

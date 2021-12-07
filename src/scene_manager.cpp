@@ -64,6 +64,8 @@ namespace vlb {
 
                 auto[posBuffer, posByteStride, posComponentType] = loadVertexAttribute(primitive, "POSITION");
                 auto[normalBuffer, normalByteStride, normalComponentType] = loadVertexAttribute(primitive, "NORMAL");
+                auto[uv0Buffer, uv0ByteStride, uv0ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_0");
+                auto[uv1Buffer, uv1ByteStride, uv1ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_1");
 
                 for (uint32_t v{}; v < vertexCount; ++v)
                 {
@@ -71,6 +73,8 @@ namespace vlb {
                     vertex.position = glm::vec4(glm::make_vec3(&posBuffer[v * posByteStride]), 1.0f);
                     vertex.position.y = - vertex.position.y;
                     vertex.normal = normalBuffer ? glm::normalize(glm::vec3(glm::make_vec3(&normalBuffer[v * normalByteStride]))) : glm::vec3(0.0f);
+                    vertex.uv0 = uv0Buffer ? glm::make_vec2(&uv0Buffer[v * uv0ByteStride]) : glm::vec2(0.0f);
+                    vertex.uv1 = uv1Buffer ? glm::make_vec2(&uv1Buffer[v * uv1ByteStride]) : glm::vec2(0.0f);
                     this->vertices.push_back(vertex);
                 }
 
@@ -133,6 +137,49 @@ namespace vlb {
         linearNodes.push_back(newNode);
     }
 
+    void Scene_t::loadSamplers()
+    {
+        for (auto& gltfSampler : this->model.samplers)
+        {
+            auto toVkWrapMode = [](int32_t gltfWrapMode) -> vk::SamplerAddressMode
+            {
+                if (gltfWrapMode == 33071)
+                {
+                    return vk::SamplerAddressMode::eClampToEdge;
+                }
+                else if (gltfWrapMode == 33648)
+                {
+                    return vk::SamplerAddressMode::eMirroredRepeat;
+                }
+                else
+                {
+                    return vk::SamplerAddressMode::eRepeat;
+                }
+            };
+
+            auto toVkFilterMode = [](int32_t gltfFilterMode) -> vk::Filter
+            {
+                if (gltfFilterMode == 9728 || gltfFilterMode == 9984 || gltfFilterMode == 9985)
+                {
+                    return vk::Filter::eNearest;
+                }
+                else
+                {
+                    return vk::Filter::eLinear;
+                }
+            };
+
+            Sampler sampler{};
+            sampler.minFilter = toVkFilterMode(gltfSampler.minFilter);
+            sampler.magFilter = toVkFilterMode(gltfSampler.magFilter);
+            sampler.addressModeU = toVkWrapMode(gltfSampler.wrapS);
+            sampler.addressModeV = toVkWrapMode(gltfSampler.wrapT);
+            sampler.addressModeW = sampler.addressModeV;
+
+            this->samplers.push_back(sampler);
+        }
+    }
+
     Scene_t::Scene_t(std::string& filename)
     {
         std::string err;
@@ -171,10 +218,10 @@ namespace vlb {
                 loadNode(nullptr, node, nodeIndex);
             }
 
-            //TODO: loadTextureSamplers(this->model);
-            //TODO: loadMaterials(this->model);
-            //TODO: loadAnimations(this->model);
-            //TODO: loadSkins(this->model);
+            loadSamplers();
+            //TODO: loadMaterials();
+            //TODO: loadAnimations();
+            //TODO: loadSkins();
 
             for (auto& node : linearNodes)
             {
@@ -253,12 +300,144 @@ namespace vlb {
         Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
     }
 
+    // graphics queue requred for blitting!
+    void Scene_t::loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& graphicsQueue, vk::CommandPool& graphicsCommandPool)
+    {
+        for (const auto& gltfTexture : this->model.textures)
+        {
+            Texture texture{new Texture_t()};
+
+            const tinygltf::Image& gltfImage = this->model.images[gltfTexture.source];
+            if (gltfImage.component == 3)
+            {
+                throw std::runtime_error("RGB (not RGBA) textures not allowed!");
+            }
+
+            vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
+            vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+            Application::Buffer staging = Application::createBuffer(device, physicalDevice, gltfImage.image.size(), usage, memoryProperty, gltfImage.image.data());
+
+            std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
+            vk::Extent3D extent{static_cast<uint32_t>(gltfImage.width), static_cast<uint32_t>(gltfImage.height), 1};
+            uint32_t mipLevels{static_cast<uint32_t>(floor(log2(std::min(gltfImage.width, gltfImage.height))) + 1.0)};
+
+            texture->image.handle = device.createImageUnique(
+                    vk::ImageCreateInfo{}
+                    .setImageType(vk::ImageType::e2D)
+                    .setFormat(vk::Format::eB8G8R8A8Unorm)
+                    .setArrayLayers(1)
+                    .setMipLevels(mipLevels)
+                    .setSamples(vk::SampleCountFlagBits::e1)
+                    .setTiling(vk::ImageTiling::eOptimal)
+                    .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc)
+                    .setSharingMode(vk::SharingMode::eConcurrent)
+                    .setQueueFamilyIndices(queueFamilyIndices)
+                    .setInitialLayout(vk::ImageLayout::eUndefined)
+                    .setExtent(extent)
+                    );
+
+            auto memoryRequirements = device.getImageMemoryRequirements(texture->image.handle.get());
+            memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+            texture->image.memory = device.allocateMemoryUnique(
+                    vk::MemoryAllocateInfo{}
+                    .setAllocationSize(memoryRequirements.size)
+                    .setMemoryTypeIndex(Application::getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
+                    );
+
+            device.bindImageMemory(texture->image.handle.get(), texture->image.memory.get(), 0);
+
+            auto blittingCmdBuffer = Application::recordCommandBuffer(device, graphicsCommandPool);
+
+            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                    { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+            blittingCmdBuffer.copyBufferToImage(
+                    staging.handle.get(),
+                    texture->image.handle.get(),
+                    vk::ImageLayout::eTransferDstOptimal,
+                    vk::BufferImageCopy{}
+                    .setImageSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                    .setImageExtent(extent)
+                    );
+
+            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                    { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+            for (uint32_t lvl = 1; lvl < mipLevels; ++lvl)
+            {
+                auto getMipLevelOffset = [extent](uint32_t lvl)
+                {
+                    return vk::Offset3D{static_cast<int32_t>(extent.width >> lvl), static_cast<int32_t>(extent.height >> lvl), 1};
+                };
+
+                vk::ImageBlit imageBlit{};
+                imageBlit
+                    .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, lvl - 1, 0, 1 })
+                    .setDstSubresource({ vk::ImageAspectFlagBits::eColor, lvl,     0, 1 })
+                    .setSrcOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl - 1) })
+                    .setDstOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl    ) });
+
+                Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                        { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+
+                blittingCmdBuffer.blitImage(texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, 1, &imageBlit, vk::Filter::eLinear);
+
+                Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                        { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+            }
+
+            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                    { vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 });
+
+            Application::flushCommandBuffer(device, graphicsCommandPool, blittingCmdBuffer, graphicsQueue);
+
+            Sampler textureSampler = gltfTexture.sampler == -1 ? Sampler{} : this->samplers[gltfTexture.sampler];
+
+            texture->sampler = device.createSamplerUnique(
+                    vk::SamplerCreateInfo{}
+                    .setMagFilter(textureSampler.magFilter)
+                    .setMinFilter(textureSampler.minFilter)
+                    .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                    .setAddressModeU(textureSampler.addressModeU)
+                    .setAddressModeV(textureSampler.addressModeV)
+                    .setAddressModeW(textureSampler.addressModeW)
+                    .setCompareOp(vk::CompareOp::eNever)
+                    .setBorderColor(vk::BorderColor::eFloatOpaqueWhite)
+                    .setMaxAnisotropy(1.0)
+                    .setAnisotropyEnable(VK_FALSE)
+                    .setMaxLod(static_cast<float>(mipLevels))
+                    .setMaxAnisotropy(8.0f)
+                    .setAnisotropyEnable(VK_TRUE));
+
+            texture->image.imageView = device.createImageViewUnique(
+                     vk::ImageViewCreateInfo{}
+                    .setImage(texture->image.handle.get())
+                    .setViewType(vk::ImageViewType::e2D)
+                    .setFormat(vk::Format::eB8G8R8A8Unorm)
+                    .setComponents({ vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA })
+                    .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
+                    );
+
+            texture->image.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal; // TODO: change layout on go as member
+
+            texture->descriptor
+                .setSampler(texture->sampler.get())
+                .setImageView(texture->image.imageView.get())
+                .setImageLayout(texture->image.imageLayout);
+
+            this->textures.push_back(texture);
+        }
+    }
+
     void SceneManager::init(InitInfo& info)
     {
         this->device = info.device;
         this->physicalDevice = info.physicalDevice;
         this->transferQueue = info.transferQueue;
         this->transferCommandPool = info.transferCommandPool;
+        this->graphicsQueue = info.graphicsQueue;
+        this->graphicsCommandPool = info.graphicsCommandPool;
         this->pFileDialog = &(info.pUI->getFileDialog());
         this->pSceneNames = &(info.pUI->getSceneNames());
         this->pSelectedSceneIndex = &(info.pUI->getSelectedSceneIndex());
@@ -302,7 +481,7 @@ namespace vlb {
                 Scene scene{new Scene_t(fileName)};
                 scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
                 scene->createObjectDescBuffer(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-                //TODO: scene->loadTextures(this->device, this->transferQueue, this->transferCommandPool);
+                scene->loadTextures(this->device, this->physicalDevice, this->graphicsQueue, this->graphicsCommandPool);
                 scenes.push_back(scene);
 
                 sceneNames.push_back(scene->name);

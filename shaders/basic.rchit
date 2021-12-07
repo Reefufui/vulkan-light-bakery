@@ -17,11 +17,14 @@ struct Vertex
 {
     vec4 position;
     vec3 normal;
+    vec2 uv0;
+    vec2 uv1;
 };
 
 layout(buffer_reference, scalar) buffer Vertices {Vertex v[]; };
 layout(buffer_reference, scalar) buffer Indices {ivec3 i[]; };
 layout(set = 0, binding = 1, scalar) buffer ObjDesc_ { ObjDesc i[]; } objDesc;
+layout(set = 0, binding = 1) uniform sampler2D textureSampler;
 
 layout(push_constant) uniform constants
 {
