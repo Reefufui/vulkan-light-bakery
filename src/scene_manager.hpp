@@ -27,11 +27,6 @@ namespace vlb {
                 glm::vec2 uv1;
             };
 
-            struct Material
-            {
-                // TODO(pbr stage)
-            };
-
             struct Sampler
             {
                 vk::Filter magFilter = vk::Filter::eLinear;
@@ -49,6 +44,60 @@ namespace vlb {
                 uint32_t mipLevels;
                 vk::DescriptorImageInfo descriptor;
                 vk::UniqueSampler sampler;
+            };
+
+            // TODO: redesign?
+            struct Material
+            {
+                struct Alpha
+                {
+                    enum class Mode
+                    {
+                        eOpaque,
+                        eMask,
+                        eBlend,
+                        eAlphaModeCount
+                    } mode{};
+
+                    float cutOff{1.0f};
+                } alpha;
+
+                struct Factors
+                {
+                    glm::vec4 baseColor = glm::vec4(1.0f);
+                    float     metallic{1.0f};
+                    float     roughness{1.0f};
+                    glm::vec4 emissive = glm::vec4(1.0f);
+
+                    glm::vec4 diffuseEXT  = glm::vec4(1.0f);
+                    glm::vec3 specularEXT = glm::vec3(0.0f);
+                } factor;
+
+                struct Textures
+                {
+                    Texture normal;
+                    Texture occlusion;
+
+                    Texture baseColor;
+                    Texture metallicRoughness;
+                    Texture emissive;
+
+                    Texture diffuseEXT;
+                    Texture specularEXT;
+                } texture;
+
+                struct TexCoordSets
+                {
+                    uint8_t normal{};
+                    uint8_t occlusion{};
+
+                    uint8_t baseColor{};
+                    uint8_t metallicRoughness{};
+                    uint8_t emissive{};
+
+                    uint8_t diffuseEXT{};
+                    uint8_t specularEXT{};
+                } coordSet;
             };
 
             struct Primitive_t;
@@ -106,10 +155,12 @@ namespace vlb {
             std::vector<Node> linearNodes;
             std::vector<Sampler> samplers;
             std::vector<Texture> textures;
+            std::vector<Material> materials;
 
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
             void loadSamplers();
+            void loadMaterials();
     };
 
     class SceneManager

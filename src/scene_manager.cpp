@@ -180,6 +180,147 @@ namespace vlb {
         }
     }
 
+    void Scene_t::loadMaterials()
+    {
+        auto getTexture = [this](tinygltf::Material& material, std::string&& label)
+        {
+            if (material.values.find(label) != material.values.end())
+            {
+                auto& value = material.values[label];
+
+                Texture texture      = this->textures[value.TextureIndex()];
+                uint8_t textureCoord = value.TextureTexCoord();
+
+                return std::make_tuple(texture, textureCoord);
+            }
+            else
+            {
+                return std::make_tuple(Texture(nullptr), uint8_t(-1));
+            }
+        };
+
+        for (tinygltf::Material &gltfMaterial : this->model.materials)
+        {
+            Material material{};
+
+            if (gltfMaterial.additionalValues.find("alphaMode") != gltfMaterial.additionalValues.end())
+            {
+                tinygltf::Parameter& param = gltfMaterial.additionalValues["alphaMode"];
+
+                if (param.string_value == "BLEND")
+                {
+                    material.alpha.mode = Material::Alpha::Mode::eBlend;
+                }
+                else if (param.string_value == "MASK")
+                {
+                    material.alpha.cutOff = 0.5f;
+                    material.alpha.mode = Material::Alpha::Mode::eMask;
+                }
+                else
+                {
+                    material.alpha.mode = Material::Alpha::Mode::eOpaque;
+                }
+
+                if (gltfMaterial.additionalValues.find("alphaCutoff") != gltfMaterial.additionalValues.end())
+                {
+                    material.alpha.cutOff = static_cast<float>(gltfMaterial.additionalValues["alphaCutoff"].Factor());
+                }
+            }
+
+            if (gltfMaterial.values.find("baseColorFactor") != gltfMaterial.values.end())
+            {
+                material.factor.baseColor = glm::make_vec4(gltfMaterial.values["baseColorFactor"].ColorFactor().data());
+            }
+
+            if (gltfMaterial.values.find("metallicFactor") != gltfMaterial.values.end())
+            {
+                material.factor.metallic = static_cast<float>(gltfMaterial.values["metallicFactor"].Factor());
+            }
+
+            if (gltfMaterial.values.find("roughnessFactor") != gltfMaterial.values.end())
+            {
+                material.factor.roughness = static_cast<float>(gltfMaterial.values["roughnessFactor"].Factor());
+            }
+
+            if (gltfMaterial.additionalValues.find("emissiveFactor") != gltfMaterial.additionalValues.end())
+            {
+                material.factor.emissive = glm::vec4(glm::make_vec3(gltfMaterial.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "normalTexture");
+                material.texture.normal     = texture;
+                material.coordSet.normal = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "occlusionTexture");
+                material.texture.occlusion     = texture;
+                material.coordSet.occlusion = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "baseColorTexture");
+                material.texture.baseColor     = texture;
+                material.coordSet.baseColor = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "metallicRoughnessTexture");
+                material.texture.metallicRoughness     = texture;
+                material.coordSet.metallicRoughness = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "emissiveTexture");
+                material.texture.emissive     = texture;
+                material.coordSet.emissive = textureCoord;
+            }
+
+            if (gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness") != gltfMaterial.extensions.end())
+            {
+                auto ext = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
+
+                if (ext->second.Has("specularGlossinessTexture"))
+                {
+                    auto index = ext->second.Get("specularGlossinessTexture").Get("index");
+                    material.texture.specularEXT  = this->textures[index.Get<int>()];
+                    material.coordSet.specularEXT = ext->second.Get("specularGlossinessTexture").Get("texCoord").Get<int>();
+                }
+
+                if (ext->second.Has("diffuseTexture"))
+                {
+                    auto index = ext->second.Get("diffuseTexture").Get("index");
+                    material.texture.diffuseEXT = this->textures[index.Get<int>()];
+                    material.coordSet.diffuseEXT = ext->second.Get("diffuseTexture").Get("texCoord").Get<int>();
+                }
+
+                if (ext->second.Has("diffuseFactor"))
+                {
+                    auto factor = ext->second.Get("diffuseFactor");
+                    for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+                    {
+                        auto val = factor.Get(i);
+                        material.factor.diffuseEXT[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+                    }
+                }
+                if (ext->second.Has("specularFactor"))
+                {
+                    auto factor = ext->second.Get("specularFactor");
+                    for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+                    {
+                        auto val = factor.Get(i);
+                        material.factor.specularEXT[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+                    }
+                }
+            }
+
+            materials.push_back(material);
+        }
+
+        materials.push_back(Material());
+    }
+
     Scene_t::Scene_t(std::string& filename)
     {
         std::string err;
@@ -219,7 +360,6 @@ namespace vlb {
             }
 
             loadSamplers();
-            //TODO: loadMaterials();
             //TODO: loadAnimations();
             //TODO: loadSkins();
 
@@ -300,7 +440,7 @@ namespace vlb {
         Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
     }
 
-    // graphics queue requred for blitting!
+    // graphics queue requred for blitting! ~duh
     void Scene_t::loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& graphicsQueue, vk::CommandPool& graphicsCommandPool)
     {
         for (const auto& gltfTexture : this->model.textures)
@@ -411,7 +551,7 @@ namespace vlb {
                     .setAnisotropyEnable(VK_TRUE));
 
             texture->image.imageView = device.createImageViewUnique(
-                     vk::ImageViewCreateInfo{}
+                    vk::ImageViewCreateInfo{}
                     .setImage(texture->image.handle.get())
                     .setViewType(vk::ImageViewType::e2D)
                     .setFormat(vk::Format::eB8G8R8A8Unorm)
@@ -428,6 +568,8 @@ namespace vlb {
 
             this->textures.push_back(texture);
         }
+
+        loadMaterials(); // TODO: call this function somewhere else
     }
 
     void SceneManager::init(InitInfo& info)
