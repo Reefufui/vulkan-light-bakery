@@ -203,11 +203,6 @@ namespace vlb {
         {
             throw std::runtime_error("could not find graphics queue!");
         }
-
-        std::cout << "graphics queue index: " << queueFamilyIndex.graphics
-            << "; transfer queue index: " << queueFamilyIndex.transfer
-            << "; compute queue index: " << queueFamilyIndex.compute
-            << "\n";
     }
 
     void Application::createCommandPools()
@@ -408,13 +403,13 @@ namespace vlb {
                 .setPCode(reinterpret_cast<const uint32_t*>(code.data())) );
     }
 
-    Application::Buffer Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
+    Application::Buffer Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data)
     {
         return createBuffer(this->device.get(), this->physicalDevice, size, usage, memoryProperty, data);
     }
 
     Application::Buffer Application::createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size,
-            vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data)
+            vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data)
     {
         std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
         Buffer buffer{};

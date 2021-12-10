@@ -64,12 +64,17 @@ namespace vlb {
 
                 auto[posBuffer, posByteStride, posComponentType] = loadVertexAttribute(primitive, "POSITION");
                 auto[normalBuffer, normalByteStride, normalComponentType] = loadVertexAttribute(primitive, "NORMAL");
+                auto[uv0Buffer, uv0ByteStride, uv0ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_0");
+                auto[uv1Buffer, uv1ByteStride, uv1ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_1");
 
                 for (uint32_t v{}; v < vertexCount; ++v)
                 {
                     Vertex vertex{};
                     vertex.position = glm::vec4(glm::make_vec3(&posBuffer[v * posByteStride]), 1.0f);
+                    vertex.position.y = - vertex.position.y;
                     vertex.normal = normalBuffer ? glm::normalize(glm::vec3(glm::make_vec3(&normalBuffer[v * normalByteStride]))) : glm::vec3(0.0f);
+                    vertex.uv0 = uv0Buffer ? glm::make_vec2(&uv0Buffer[v * uv0ByteStride]) : glm::vec2(0.0f);
+                    vertex.uv1 = uv1Buffer ? glm::make_vec2(&uv1Buffer[v * uv1ByteStride]) : glm::vec2(0.0f);
                     this->vertices.push_back(vertex);
                 }
 
@@ -132,6 +137,190 @@ namespace vlb {
         linearNodes.push_back(newNode);
     }
 
+    void Scene_t::loadSamplers()
+    {
+        for (auto& gltfSampler : this->model.samplers)
+        {
+            auto toVkWrapMode = [](int32_t gltfWrapMode) -> vk::SamplerAddressMode
+            {
+                if (gltfWrapMode == 33071)
+                {
+                    return vk::SamplerAddressMode::eClampToEdge;
+                }
+                else if (gltfWrapMode == 33648)
+                {
+                    return vk::SamplerAddressMode::eMirroredRepeat;
+                }
+                else
+                {
+                    return vk::SamplerAddressMode::eRepeat;
+                }
+            };
+
+            auto toVkFilterMode = [](int32_t gltfFilterMode) -> vk::Filter
+            {
+                if (gltfFilterMode == 9728 || gltfFilterMode == 9984 || gltfFilterMode == 9985)
+                {
+                    return vk::Filter::eNearest;
+                }
+                else
+                {
+                    return vk::Filter::eLinear;
+                }
+            };
+
+            Sampler sampler{};
+            sampler.minFilter = toVkFilterMode(gltfSampler.minFilter);
+            sampler.magFilter = toVkFilterMode(gltfSampler.magFilter);
+            sampler.addressModeU = toVkWrapMode(gltfSampler.wrapS);
+            sampler.addressModeV = toVkWrapMode(gltfSampler.wrapT);
+            sampler.addressModeW = sampler.addressModeV;
+
+            this->samplers.push_back(sampler);
+        }
+    }
+
+    void Scene_t::loadMaterials()
+    {
+        auto getTexture = [this](tinygltf::Material& material, std::string&& label)
+        {
+            if (material.values.find(label) != material.values.end())
+            {
+                auto& value = material.values[label];
+
+                Texture texture      = this->textures[value.TextureIndex()];
+                uint8_t textureCoord = value.TextureTexCoord();
+
+                return std::make_tuple(texture, textureCoord);
+            }
+            else
+            {
+                return std::make_tuple(Texture(nullptr), uint8_t(-1));
+            }
+        };
+
+        for (tinygltf::Material &gltfMaterial : this->model.materials)
+        {
+            Material material{};
+
+            if (gltfMaterial.additionalValues.find("alphaMode") != gltfMaterial.additionalValues.end())
+            {
+                tinygltf::Parameter& param = gltfMaterial.additionalValues["alphaMode"];
+
+                if (param.string_value == "BLEND")
+                {
+                    material.alpha.mode = Material::Alpha::Mode::eBlend;
+                }
+                else if (param.string_value == "MASK")
+                {
+                    material.alpha.cutOff = 0.5f;
+                    material.alpha.mode = Material::Alpha::Mode::eMask;
+                }
+                else
+                {
+                    material.alpha.mode = Material::Alpha::Mode::eOpaque;
+                }
+
+                if (gltfMaterial.additionalValues.find("alphaCutoff") != gltfMaterial.additionalValues.end())
+                {
+                    material.alpha.cutOff = static_cast<float>(gltfMaterial.additionalValues["alphaCutoff"].Factor());
+                }
+            }
+
+            if (gltfMaterial.values.find("baseColorFactor") != gltfMaterial.values.end())
+            {
+                material.factor.baseColor = glm::make_vec4(gltfMaterial.values["baseColorFactor"].ColorFactor().data());
+            }
+
+            if (gltfMaterial.values.find("metallicFactor") != gltfMaterial.values.end())
+            {
+                material.factor.metallic = static_cast<float>(gltfMaterial.values["metallicFactor"].Factor());
+            }
+
+            if (gltfMaterial.values.find("roughnessFactor") != gltfMaterial.values.end())
+            {
+                material.factor.roughness = static_cast<float>(gltfMaterial.values["roughnessFactor"].Factor());
+            }
+
+            if (gltfMaterial.additionalValues.find("emissiveFactor") != gltfMaterial.additionalValues.end())
+            {
+                material.factor.emissive = glm::vec4(glm::make_vec3(gltfMaterial.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "normalTexture");
+                material.texture.normal     = texture;
+                material.coordSet.normal = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "occlusionTexture");
+                material.texture.occlusion     = texture;
+                material.coordSet.occlusion = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "baseColorTexture");
+                material.texture.baseColor     = texture;
+                material.coordSet.baseColor = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "metallicRoughnessTexture");
+                material.texture.metallicRoughness     = texture;
+                material.coordSet.metallicRoughness = textureCoord;
+            }
+
+            {
+                auto[texture, textureCoord] = getTexture(gltfMaterial, "emissiveTexture");
+                material.texture.emissive     = texture;
+                material.coordSet.emissive = textureCoord;
+            }
+
+            if (gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness") != gltfMaterial.extensions.end())
+            {
+                auto ext = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
+
+                if (ext->second.Has("specularGlossinessTexture"))
+                {
+                    auto index = ext->second.Get("specularGlossinessTexture").Get("index");
+                    material.texture.specularEXT  = this->textures[index.Get<int>()];
+                    material.coordSet.specularEXT = ext->second.Get("specularGlossinessTexture").Get("texCoord").Get<int>();
+                }
+
+                if (ext->second.Has("diffuseTexture"))
+                {
+                    auto index = ext->second.Get("diffuseTexture").Get("index");
+                    material.texture.diffuseEXT = this->textures[index.Get<int>()];
+                    material.coordSet.diffuseEXT = ext->second.Get("diffuseTexture").Get("texCoord").Get<int>();
+                }
+
+                if (ext->second.Has("diffuseFactor"))
+                {
+                    auto factor = ext->second.Get("diffuseFactor");
+                    for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+                    {
+                        auto val = factor.Get(i);
+                        material.factor.diffuseEXT[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+                    }
+                }
+                if (ext->second.Has("specularFactor"))
+                {
+                    auto factor = ext->second.Get("specularFactor");
+                    for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+                    {
+                        auto val = factor.Get(i);
+                        material.factor.specularEXT[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+                    }
+                }
+            }
+
+            materials.push_back(material);
+        }
+
+        materials.push_back(Material());
+    }
+
     Scene_t::Scene_t(std::string& filename)
     {
         std::string err;
@@ -152,17 +341,19 @@ namespace vlb {
 
         if (!warn.empty())
         {
-            printf("Warn: %s\n", warn.c_str());
+            printf("Warn: %s", warn.c_str());
         }
 
         if (!err.empty())
         {
-            printf("Err: %s\n", err.c_str());
+            printf("Err: %s", err.c_str());
         }
 
         if (loaded)
         {
+            this->filename = std::filesystem::absolute(filename);
             this->name = filePath.stem();
+
             const auto& scene = this->model.scenes[0];
             for (const auto& nodeIndex : scene.nodes)
             {
@@ -170,10 +361,9 @@ namespace vlb {
                 loadNode(nullptr, node, nodeIndex);
             }
 
-            //TODO: loadTextureSamplers(this->model);
-            //TODO: loadMaterials(this->model);
-            //TODO: loadAnimations(this->model);
-            //TODO: loadSkins(this->model);
+            loadSamplers();
+            //TODO: loadAnimations();
+            //TODO: loadSkins();
 
             for (auto& node : linearNodes)
             {
@@ -218,71 +408,277 @@ namespace vlb {
         Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
     }
 
+    void Scene_t::createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool)
+    {
+        struct ObjDesc
+        {
+            vk::DeviceAddress vertexBuffer;
+            vk::DeviceAddress indexBuffer;
+        } objDesc;
+
+        objDesc.vertexBuffer = device.getBufferAddressKHR(this->vertexBuffer.handle.get());
+        objDesc.indexBuffer  = device.getBufferAddressKHR(this->indexBuffer.handle.get());
+
+        auto copyCmdBuffer = Application::recordCommandBuffer(device, copyCommandPool);
+
+        vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+
+        auto size = sizeof(ObjDesc);
+
+        Application::Buffer staging = Application::createBuffer(device, physicalDevice, size, usage, memoryProperty, &objDesc);
+
+        usage = vk::BufferUsageFlagBits::eShaderDeviceAddress
+            | vk::BufferUsageFlagBits::eTransferDst
+            | vk::BufferUsageFlagBits::eStorageBuffer;
+        memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+        this->objDescBuffer = Application::createBuffer(device, physicalDevice, size, usage, memoryProperty);
+
+        vk::BufferCopy copyRegion{};
+        copyRegion.setSize(size);
+        copyCmdBuffer.copyBuffer(staging.handle.get(), this->objDescBuffer.handle.get(), 1, &copyRegion);
+
+        Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
+    }
+
+    // graphics queue requred for blitting! ~duh
+    void Scene_t::loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& graphicsQueue, vk::CommandPool& graphicsCommandPool)
+    {
+        for (const auto& gltfTexture : this->model.textures)
+        {
+            Texture texture{new Texture_t()};
+
+            const tinygltf::Image& gltfImage = this->model.images[gltfTexture.source];
+            if (gltfImage.component == 3)
+            {
+                throw std::runtime_error("RGB (not RGBA) textures not allowed!");
+            }
+
+            vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
+            vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+            Application::Buffer staging = Application::createBuffer(device, physicalDevice, gltfImage.image.size(), usage, memoryProperty, gltfImage.image.data());
+
+            std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
+            vk::Extent3D extent{static_cast<uint32_t>(gltfImage.width), static_cast<uint32_t>(gltfImage.height), 1};
+            uint32_t mipLevels{static_cast<uint32_t>(floor(log2(std::min(gltfImage.width, gltfImage.height))) + 1.0)};
+
+            texture->image.handle = device.createImageUnique(
+                    vk::ImageCreateInfo{}
+                    .setImageType(vk::ImageType::e2D)
+                    .setFormat(vk::Format::eB8G8R8A8Unorm)
+                    .setArrayLayers(1)
+                    .setMipLevels(mipLevels)
+                    .setSamples(vk::SampleCountFlagBits::e1)
+                    .setTiling(vk::ImageTiling::eOptimal)
+                    .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc)
+                    .setSharingMode(vk::SharingMode::eConcurrent)
+                    .setQueueFamilyIndices(queueFamilyIndices)
+                    .setInitialLayout(vk::ImageLayout::eUndefined)
+                    .setExtent(extent)
+                    );
+
+            auto memoryRequirements = device.getImageMemoryRequirements(texture->image.handle.get());
+            memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+            texture->image.memory = device.allocateMemoryUnique(
+                    vk::MemoryAllocateInfo{}
+                    .setAllocationSize(memoryRequirements.size)
+                    .setMemoryTypeIndex(Application::getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
+                    );
+
+            device.bindImageMemory(texture->image.handle.get(), texture->image.memory.get(), 0);
+
+            auto blittingCmdBuffer = Application::recordCommandBuffer(device, graphicsCommandPool);
+
+            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                    { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+            blittingCmdBuffer.copyBufferToImage(
+                    staging.handle.get(),
+                    texture->image.handle.get(),
+                    vk::ImageLayout::eTransferDstOptimal,
+                    vk::BufferImageCopy{}
+                    .setImageSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                    .setImageExtent(extent)
+                    );
+
+            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                    { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+            for (uint32_t lvl = 1; lvl < mipLevels; ++lvl)
+            {
+                auto getMipLevelOffset = [extent](uint32_t lvl)
+                {
+                    return vk::Offset3D{static_cast<int32_t>(extent.width >> lvl), static_cast<int32_t>(extent.height >> lvl), 1};
+                };
+
+                vk::ImageBlit imageBlit{};
+                imageBlit
+                    .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, lvl - 1, 0, 1 })
+                    .setDstSubresource({ vk::ImageAspectFlagBits::eColor, lvl,     0, 1 })
+                    .setSrcOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl - 1) })
+                    .setDstOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl    ) });
+
+                Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                        { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+
+                blittingCmdBuffer.blitImage(texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, 1, &imageBlit, vk::Filter::eLinear);
+
+                Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                        { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+            }
+
+            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                    { vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 });
+
+            Application::flushCommandBuffer(device, graphicsCommandPool, blittingCmdBuffer, graphicsQueue);
+
+            Sampler textureSampler = gltfTexture.sampler == -1 ? Sampler{} : this->samplers[gltfTexture.sampler];
+
+            texture->sampler = device.createSamplerUnique(
+                    vk::SamplerCreateInfo{}
+                    .setMagFilter(textureSampler.magFilter)
+                    .setMinFilter(textureSampler.minFilter)
+                    .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                    .setAddressModeU(textureSampler.addressModeU)
+                    .setAddressModeV(textureSampler.addressModeV)
+                    .setAddressModeW(textureSampler.addressModeW)
+                    .setCompareOp(vk::CompareOp::eNever)
+                    .setBorderColor(vk::BorderColor::eFloatOpaqueWhite)
+                    .setMaxAnisotropy(1.0)
+                    .setAnisotropyEnable(VK_FALSE)
+                    .setMaxLod(static_cast<float>(mipLevels))
+                    .setMaxAnisotropy(8.0f)
+                    .setAnisotropyEnable(VK_TRUE));
+
+            texture->image.imageView = device.createImageViewUnique(
+                    vk::ImageViewCreateInfo{}
+                    .setImage(texture->image.handle.get())
+                    .setViewType(vk::ImageViewType::e2D)
+                    .setFormat(vk::Format::eB8G8R8A8Unorm)
+                    .setComponents({ vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA })
+                    .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
+                    );
+
+            texture->image.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal; // TODO: change layout on go as member
+
+            texture->descriptor
+                .setSampler(texture->sampler.get())
+                .setImageView(texture->image.imageView.get())
+                .setImageLayout(texture->image.imageLayout);
+
+            this->textures.push_back(texture);
+        }
+
+        loadMaterials(); // TODO: call this function somewhere else
+    }
+
+    void SceneManager::pushScene(std::string& fileName)
+    {
+        Scene scene{new Scene_t(fileName)};
+        scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
+        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
+        scene->loadTextures(this->device, this->physicalDevice, this->graphicsQueue, this->graphicsCommandPool);
+        this->scenes.push_back(scene);
+    }
+
+    void SceneManager::popScene(int sceneIndex)
+    {
+        this->device.waitIdle();
+        this->scenes.erase(this->scenes.begin() + sceneIndex);
+    }
+
     void SceneManager::init(InitInfo& info)
     {
         this->device = info.device;
         this->physicalDevice = info.physicalDevice;
         this->transferQueue = info.transferQueue;
         this->transferCommandPool = info.transferCommandPool;
+        this->graphicsQueue = info.graphicsQueue;
+        this->graphicsCommandPool = info.graphicsCommandPool;
         this->pFileDialog = &(info.pUI->getFileDialog());
         this->pSceneNames = &(info.pUI->getSceneNames());
+        this->pScenePaths = &(info.pUI->getScenePaths());
         this->pSelectedSceneIndex = &(info.pUI->getSelectedSceneIndex());
         this->pFreeScene = &(info.pUI->getFreeSceneFlag());
 
-        std::string fileName{"default_blender_cube.gltf"};
-        Scene scene{new Scene_t(fileName)};
-        scene->createBLASBuffers(info.device, info.physicalDevice, info.transferQueue, info.transferCommandPool);
-        scenes.push_back(scene);
-        (*this->pSceneNames).push_back(scene->name);
-        *this->pSelectedSceneIndex = 0;
+        if (!pScenePaths->size())
+        {
+            std::string fileName{"default_blender_cube.gltf"};
+            pushScene(fileName);
+            (*this->pSceneNames).push_back(this->scenes.back()->name);
+            (*this->pScenePaths).push_back(this->scenes.back()->filename);
+            *this->pSelectedSceneIndex = 0;
+        }
+        else
+        {
+            try
+            {
+                for (auto& filePath : (*this->pScenePaths))
+                {
+                    pushScene(filePath);
+                    (*this->pSceneNames).push_back(this->scenes.back()->name);
+                }
+            }
+            catch(std::runtime_error& e)
+            {
+                std::cerr << e.what() << "\n";
+            }
+        }
+
+        this->sceneChangedFlag = false;
     }
 
     void SceneManager::update()
     {
         auto& sceneIndex = *this->pSelectedSceneIndex;
         auto& sceneNames = *this->pSceneNames;
+        auto& scenePaths = *this->pScenePaths;
 
-        static int oldSceneIndex = 0;
-        if (oldSceneIndex != sceneIndex)
-        {
-            this->sceneChangedFlag = true;
-            oldSceneIndex = sceneIndex;
-        }
-        else
-        {
-            this->sceneChangedFlag = false;
-        }
+        this->sceneChangedFlag = false;
 
         // "-"
         if (*this->pFreeScene)
         {
-            if (scenes.size() > 1)
-            {
-                scenes.erase(scenes.begin() + sceneIndex);
-                sceneNames.erase(sceneNames.begin() + sceneIndex);
-                sceneIndex = std::max(0, sceneIndex - 1);
-            }
+            popScene(sceneIndex);
+            sceneNames.erase(sceneNames.begin() + sceneIndex);
+            scenePaths.erase(scenePaths.begin() + sceneIndex);
+            sceneIndex = std::max(0, sceneIndex - 1);
+
+            this->sceneChangedFlag = true;
 
             *this->pFreeScene = false;
-            this->sceneChangedFlag = true;
         }
 
         // "+"
         if (this->pFileDialog->HasSelected())
         {
             std::string fileName{this->pFileDialog->GetSelected().string()};
-            Scene scene{new Scene_t(fileName)};
-            scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-            //TODO: scene->loadTextures(this->device, this->transferQueue, this->transferCommandPool);
-            scenes.push_back(scene);
+            try
+            {
+                pushScene(fileName);
+                sceneNames.push_back(this->scenes.back()->name);
+                scenePaths.push_back(this->scenes.back()->filename);
+                sceneIndex = static_cast<int>(sceneNames.size()) - 1;
 
-            sceneNames.push_back(scene->name);
-            sceneIndex = static_cast<int>(sceneNames.size()) - 1;
+                this->sceneChangedFlag = true;
 
+            }
+            catch(std::runtime_error& e)
+            {
+                std::cerr << e.what() << "\n";
+            }
             this->pFileDialog->ClearSelected();
-            this->sceneChangedFlag = true;
         }
 
+        // "drop-down menu"
+        static int oldSceneIndex = 0;
+        if (oldSceneIndex != sceneIndex)
+        {
+            this->sceneChangedFlag = true;
+            oldSceneIndex = sceneIndex;
+        }
     }
 
     Scene& SceneManager::getScene()

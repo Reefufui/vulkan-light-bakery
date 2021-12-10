@@ -23,11 +23,81 @@ namespace vlb {
             {
                 glm::vec4 position;
                 glm::vec3 normal;
+                glm::vec2 uv0;
+                glm::vec2 uv1;
             };
 
+            struct Sampler
+            {
+                vk::Filter magFilter = vk::Filter::eLinear;
+                vk::Filter minFilter = vk::Filter::eLinear;
+                vk::SamplerAddressMode addressModeU = vk::SamplerAddressMode::eRepeat;
+                vk::SamplerAddressMode addressModeV = vk::SamplerAddressMode::eRepeat;
+                vk::SamplerAddressMode addressModeW = vk::SamplerAddressMode::eRepeat;
+            };
+
+            struct Texture_t;
+            typedef std::shared_ptr<Texture_t> Texture;
+            struct Texture_t
+            {
+                Application::Image image;
+                uint32_t mipLevels;
+                vk::DescriptorImageInfo descriptor;
+                vk::UniqueSampler sampler;
+            };
+
+            // TODO: redesign?
             struct Material
             {
-                // TODO(pbr stage)
+                struct Alpha
+                {
+                    enum class Mode
+                    {
+                        eOpaque,
+                        eMask,
+                        eBlend,
+                        eAlphaModeCount
+                    } mode{};
+
+                    float cutOff{1.0f};
+                } alpha;
+
+                struct Factors
+                {
+                    glm::vec4 baseColor = glm::vec4(1.0f);
+                    float     metallic{1.0f};
+                    float     roughness{1.0f};
+                    glm::vec4 emissive = glm::vec4(1.0f);
+
+                    glm::vec4 diffuseEXT  = glm::vec4(1.0f);
+                    glm::vec3 specularEXT = glm::vec3(0.0f);
+                } factor;
+
+                struct Textures
+                {
+                    Texture normal;
+                    Texture occlusion;
+
+                    Texture baseColor;
+                    Texture metallicRoughness;
+                    Texture emissive;
+
+                    Texture diffuseEXT;
+                    Texture specularEXT;
+                } texture;
+
+                struct TexCoordSets
+                {
+                    uint8_t normal{};
+                    uint8_t occlusion{};
+
+                    uint8_t baseColor{};
+                    uint8_t metallicRoughness{};
+                    uint8_t emissive{};
+
+                    uint8_t diffuseEXT{};
+                    uint8_t specularEXT{};
+                } coordSet;
             };
 
             struct Primitive_t;
@@ -66,12 +136,16 @@ namespace vlb {
             Scene_t() = delete;
             Scene_t(std::string& filename);
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
 
+            Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
             Application::Buffer indexBuffer;
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
             std::string name;
+            std::string filename;
 
         private:
 
@@ -80,9 +154,14 @@ namespace vlb {
 
             std::vector<Node> nodes;
             std::vector<Node> linearNodes;
+            std::vector<Sampler> samplers;
+            std::vector<Texture> textures;
+            std::vector<Material> materials;
 
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
+            void loadSamplers();
+            void loadMaterials();
     };
 
     class SceneManager
@@ -92,13 +171,19 @@ namespace vlb {
             vk::Device device;
             vk::Queue transferQueue;
             vk::CommandPool transferCommandPool;
+            vk::Queue graphicsQueue;
+            vk::CommandPool graphicsCommandPool;
             ImGui::FileBrowser* pFileDialog;
             std::vector<std::string>* pSceneNames;
+            std::vector<std::string>* pScenePaths;
             int* pSelectedSceneIndex;
             bool* pFreeScene;
             bool sceneChangedFlag;
 
             std::vector<Scene> scenes{};
+
+            void pushScene(std::string& fileName);
+            void popScene(int sceneIndex);
 
         public:
             struct InitInfo
@@ -107,6 +192,8 @@ namespace vlb {
                 vk::Device device;
                 vk::Queue transferQueue;
                 vk::CommandPool transferCommandPool;
+                vk::Queue graphicsQueue;
+                vk::CommandPool graphicsCommandPool;
                 vlb::UI* pUI;
             };
 

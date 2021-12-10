@@ -38,6 +38,8 @@ namespace vlb {
                 vk::UniqueImage        handle;
                 vk::UniqueDeviceMemory memory;
                 vk::UniqueImageView    imageView;
+                // TODO: make fully use of new member
+                vk::ImageLayout        imageLayout;
             };
 
         protected:
@@ -88,7 +90,7 @@ namespace vlb {
 
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
 
-            Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, void* data = nullptr);
+            Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
 
         private:
 
@@ -119,7 +121,7 @@ namespace vlb {
             static void flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue);
 
             static Buffer createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size, vk::BufferUsageFlags usage,
-                    vk::MemoryPropertyFlags memoryProperty, void* data = nullptr);
+                    vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
 
             Application(bool isGraphical = true);
             Application(const Application& other) = delete;

@@ -4,6 +4,8 @@ MSU Graphics Group Student's Diploma Project
 
  - **Treefonov Andrey** [[GitHub](https://github.com/Reefufui)] [[LinkedIn](https://www.linkedin.com/in/andrey-treefonov-4904b31b1/)]
 
+EARLY STAGES OF DEVELOPMENT
+
 ## Project Goal
 
 The goal of the project is to implement and improve Activision's UberBake Light Baking System using Vulkan. You can find a detailed proposal of this project here: [SIGGRAPH 2020 Paper](https://darioseyb.com/pdf/seyb20uberbake.pdf).

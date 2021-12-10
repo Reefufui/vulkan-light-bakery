@@ -188,6 +188,8 @@ namespace vlb {
                 this->device.get(),
                 this->queue.transfer,
                 this->commandPool.transfer.get(),
+                this->queue.graphics,
+                this->commandPool.graphics.get(),
                 &this->ui
         };
         this->sceneManager.init(sceneManagerInitInfo);

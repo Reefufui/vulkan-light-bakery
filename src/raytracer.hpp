@@ -16,9 +16,11 @@ namespace vlb {
             void createRayTracingPipeline();
             void createShaderBindingTable();
             void createDescriptorSets();
+            void updateResultImageDescriptorSets();
+            void updateSceneDescriptorSets();
             void recordDrawCommandBuffer(uint64_t imageIndex);
             void draw();
-            void reset();
+            void handleSceneChange();
 
             struct AccelerationStructure
             {
@@ -37,12 +39,31 @@ namespace vlb {
             Image rayGenStorage;
             ShaderBindingTable sbt;
 
+            struct PushConstant
+            {
+                float lightIntensity;
+            } pc;
+
+            //TODO: impl. better descriptor sets managment (maybe auto-generated)
+            struct DSLayout
+            {
+                vk::UniqueDescriptorSetLayout scene;
+                vk::UniqueDescriptorSetLayout resultImage;
+            };
+
+            struct DS
+            {
+                vk::UniqueDescriptorSet scene;
+                vk::UniqueDescriptorSet resultImage;
+            };
+
+            vk::UniqueDescriptorPool descriptorPool;
+            DS descriptorSet;
+            DSLayout descriptorSetLayout;
+
             vk::UniquePipeline            pipeline;
             vk::UniquePipelineLayout      pipelineLayout;
-            vk::UniqueDescriptorSetLayout descriptorSetLayout;
             uint32_t                      shaderGroupsCount;
-            vk::UniqueDescriptorPool      descriptorPool;
-            vk::UniqueDescriptorSet       descriptorSet;
 
             std::vector<vk::UniqueCommandBuffer> drawCommandBuffers{};
 
