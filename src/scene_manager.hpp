@@ -145,6 +145,7 @@ namespace vlb {
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
             std::string name;
+            std::string filename;
 
         private:
 
@@ -174,11 +175,15 @@ namespace vlb {
             vk::CommandPool graphicsCommandPool;
             ImGui::FileBrowser* pFileDialog;
             std::vector<std::string>* pSceneNames;
+            std::vector<std::string>* pScenePaths;
             int* pSelectedSceneIndex;
             bool* pFreeScene;
             bool sceneChangedFlag;
 
             std::vector<Scene> scenes{};
+
+            void pushScene(std::string& fileName);
+            void popScene(int sceneIndex);
 
         public:
             struct InitInfo

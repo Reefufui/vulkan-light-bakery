@@ -2,8 +2,11 @@
 
 #include "ui.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 
 namespace ImGui {
     static auto vector_getter = [](void* vec, int idx, const char** out_text)
@@ -271,6 +274,8 @@ namespace vlb {
         {
             this->fileDialog.SetPwd(modelsPath);
         }
+
+        deserialize();
     }
 
     ImGui::FileBrowser& UI::getFileDialog()
@@ -281,6 +286,11 @@ namespace vlb {
     std::vector<std::string>& UI::getSceneNames()
     {
         return this->sceneNames;
+    }
+
+    std::vector<std::string>& UI::getScenePaths()
+    {
+        return this->scenePaths;
     }
 
     int& UI::getSelectedSceneIndex()
@@ -347,8 +357,34 @@ namespace vlb {
         commandBuffer.endRenderPass();
     }
 
+    void UI::deserialize()
+    {
+        std::ifstream file("vklb.json");
+
+        if (file.is_open())
+        {
+            nlohmann::json json{};
+            file >> json;
+            this->lightIntensity = json["lightIntensity"].get<float>();
+            this->selectedSceneIndex = json["selectedSceneIndex"].get<int>();
+            this->scenePaths = json["scenePaths"].get<std::vector<std::string>>();
+        }
+    }
+
+    void UI::serialize()
+    {
+        std::ofstream file("vklb.json");
+
+        nlohmann::json json{};
+        json["lightIntensity"] = this->lightIntensity;
+        json["selectedSceneIndex"] = this->selectedSceneIndex;
+        json["scenePaths"] = this->scenePaths;
+        file << std::setw(4) << json << std::endl;
+    }
+
     void UI::cleanup()
     {
+        serialize();
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
