@@ -39,12 +39,14 @@ namespace vlb {
             int selectedSceneIndex = 0;
             bool freeSceneFlag = false;
             std::vector<std::string> sceneNames{};
+            std::vector<std::string> scenePaths{};
             float lightIntensity = 1.0f;
 
         public:
 
             ImGui::FileBrowser& getFileDialog();
             std::vector<std::string>& getSceneNames();
+            std::vector<std::string>& getScenePaths();
             int& getSelectedSceneIndex();
             bool& getFreeSceneFlag();
             float& getLightIntensity();
@@ -64,6 +66,8 @@ namespace vlb {
 
             void init(InterfaceInitInfo& info, vk::CommandBuffer& commandBuffer);
             void draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer);
+            void serialize();
+            void deserialize();
             void cleanup();
     };
 

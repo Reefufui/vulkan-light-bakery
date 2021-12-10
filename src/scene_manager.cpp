@@ -351,7 +351,9 @@ namespace vlb {
 
         if (loaded)
         {
+            this->filename = std::filesystem::absolute(filename);
             this->name = filePath.stem();
+
             const auto& scene = this->model.scenes[0];
             for (const auto& nodeIndex : scene.nodes)
             {
@@ -572,6 +574,21 @@ namespace vlb {
         loadMaterials(); // TODO: call this function somewhere else
     }
 
+    void SceneManager::pushScene(std::string& fileName)
+    {
+        Scene scene{new Scene_t(fileName)};
+        scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
+        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
+        scene->loadTextures(this->device, this->physicalDevice, this->graphicsQueue, this->graphicsCommandPool);
+        this->scenes.push_back(scene);
+    }
+
+    void SceneManager::popScene(int sceneIndex)
+    {
+        this->device.waitIdle();
+        this->scenes.erase(this->scenes.begin() + sceneIndex);
+    }
+
     void SceneManager::init(InitInfo& info)
     {
         this->device = info.device;
@@ -582,16 +599,34 @@ namespace vlb {
         this->graphicsCommandPool = info.graphicsCommandPool;
         this->pFileDialog = &(info.pUI->getFileDialog());
         this->pSceneNames = &(info.pUI->getSceneNames());
+        this->pScenePaths = &(info.pUI->getScenePaths());
         this->pSelectedSceneIndex = &(info.pUI->getSelectedSceneIndex());
         this->pFreeScene = &(info.pUI->getFreeSceneFlag());
 
-        std::string fileName{"default_blender_cube.gltf"};
-        Scene scene{new Scene_t(fileName)};
-        scene->createBLASBuffers(info.device, info.physicalDevice, info.transferQueue, info.transferCommandPool);
-        scene->createObjectDescBuffer(info.device, info.physicalDevice, info.transferQueue, info.transferCommandPool);
-        scenes.push_back(scene);
-        (*this->pSceneNames).push_back(scene->name);
-        *this->pSelectedSceneIndex = 0;
+        if (!pScenePaths->size())
+        {
+            std::string fileName{"default_blender_cube.gltf"};
+            pushScene(fileName);
+            (*this->pSceneNames).push_back(this->scenes.back()->name);
+            (*this->pScenePaths).push_back(this->scenes.back()->filename);
+            *this->pSelectedSceneIndex = 0;
+        }
+        else
+        {
+            try
+            {
+                for (auto& filePath : (*this->pScenePaths))
+                {
+                    pushScene(filePath);
+                    (*this->pSceneNames).push_back(this->scenes.back()->name);
+                }
+            }
+            catch(std::runtime_error& e)
+            {
+                std::cerr << e.what() << "\n";
+            }
+        }
+
         this->sceneChangedFlag = false;
     }
 
@@ -599,19 +634,21 @@ namespace vlb {
     {
         auto& sceneIndex = *this->pSelectedSceneIndex;
         auto& sceneNames = *this->pSceneNames;
+        auto& scenePaths = *this->pScenePaths;
 
         this->sceneChangedFlag = false;
 
         // "-"
         if (*this->pFreeScene)
         {
-            this->device.waitIdle();
-            scenes.erase(scenes.begin() + sceneIndex);
+            popScene(sceneIndex);
             sceneNames.erase(sceneNames.begin() + sceneIndex);
+            scenePaths.erase(scenePaths.begin() + sceneIndex);
             sceneIndex = std::max(0, sceneIndex - 1);
 
-            *this->pFreeScene = false;
             this->sceneChangedFlag = true;
+
+            *this->pFreeScene = false;
         }
 
         // "+"
@@ -620,22 +657,18 @@ namespace vlb {
             std::string fileName{this->pFileDialog->GetSelected().string()};
             try
             {
-                Scene scene{new Scene_t(fileName)};
-                scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-                scene->createObjectDescBuffer(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-                scene->loadTextures(this->device, this->physicalDevice, this->graphicsQueue, this->graphicsCommandPool);
-                scenes.push_back(scene);
-
-                sceneNames.push_back(scene->name);
+                pushScene(fileName);
+                sceneNames.push_back(this->scenes.back()->name);
+                scenePaths.push_back(this->scenes.back()->filename);
                 sceneIndex = static_cast<int>(sceneNames.size()) - 1;
 
                 this->sceneChangedFlag = true;
+
             }
             catch(std::runtime_error& e)
             {
                 std::cerr << e.what() << "\n";
             }
-
             this->pFileDialog->ClearSelected();
         }
 
