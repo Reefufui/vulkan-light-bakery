@@ -17,6 +17,7 @@ namespace vlb {
             void createShaderBindingTable();
             void createDescriptorSets();
             void updateResultImageDescriptorSets();
+            void updateCameraDescriptorSets();
             void updateSceneDescriptorSets();
             void recordDrawCommandBuffer(uint64_t imageIndex);
             void draw();

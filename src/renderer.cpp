@@ -222,6 +222,16 @@ namespace vlb {
 
         initUI();
         initSceneManager();
+
+        auto[width, height, depth] = this->surfaceExtent;
+        this->camera
+            .setViewingFrustum(Camera::ViewingFrustum{}
+                    .setAspect(static_cast<float>(width) / static_cast<float>(height))
+                    )
+            .setType(Camera::Type::eFirstPerson)
+            .setRotationSpeed(1.0f)
+            .setMovementSpeed(1.0f)
+            .createCameraUBOs(this->device.get(), this->physicalDevice, this->swapChainImages.size());
     }
 
     Renderer::~Renderer()

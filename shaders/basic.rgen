@@ -3,6 +3,12 @@
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 1, binding = 0, rgba8) uniform image2D image;
+layout(set = 2, binding = 0) uniform CameraUBO {
+    mat4 projection;
+    mat4 view;
+    mat4 projectionInv;
+    mat4 viewInv;
+} camera;
 
 layout(location = 0) rayPayloadEXT vec3 payLoad;
 
@@ -12,9 +18,9 @@ void main()
     const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
     vec2 d = inUV * 2.0 - 1.0;
 
-    vec4 origin = vec4(0, 0, 10, 1); // * ubo.viewInverse
-    vec4 target = vec4(d.x, d.y, 8, 1); // * ubo.projInverse
-    vec4 direction = vec4(normalize(target.xyz - origin.xyz), 0); // * ubo.viewInverse
+    vec4 origin = camera.viewInv * vec4(0, 0, 0, 1);
+    vec4 target = camera.projectionInv * vec4(d.x, d.y, 1, 1);
+    vec4 direction = camera.viewInv * vec4(normalize(target.xyz / target.w), 0);
 
     float tmin = 0.001;
     float tmax = 10000.0;

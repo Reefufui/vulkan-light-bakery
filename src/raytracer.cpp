@@ -215,39 +215,47 @@ namespace vlb {
 
     void Raytracer::createRayTracingPipeline()
     {
-        std::vector<vk::DescriptorSetLayoutBinding> sceneBindings{
-            vk::DescriptorSetLayoutBinding{}
-            .setBinding(0)
-                .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+        // @TODO: code restructure needed
+        // scene
+        {
+            std::vector<vk::DescriptorSetLayoutBinding> sceneBindings{
+                vk::DescriptorSetLayoutBinding{}
+                .setBinding(0)
+                    .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+                    .setDescriptorCount(1)
+                    .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
+                    vk::DescriptorSetLayoutBinding{}
+                .setBinding(1)
+                    .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                    .setDescriptorCount(1)
+                    .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
+            };
+
+            this->descriptorSetLayout.scene = this->device.get().createDescriptorSetLayoutUnique(
+                    vk::DescriptorSetLayoutCreateInfo{}
+                    .setBindings(sceneBindings)
+                    );
+        }
+
+        // result image
+        {
+            vk::DescriptorSetLayoutBinding resultImageLayoutBinding{};
+            resultImageLayoutBinding
+                .setBinding(0)
+                .setDescriptorType(vk::DescriptorType::eStorageImage)
                 .setDescriptorCount(1)
-                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
-            vk::DescriptorSetLayoutBinding{}
-            .setBinding(1)
-                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
-                .setDescriptorCount(1)
-                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
-        };
+                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
 
-        this->descriptorSetLayout.scene = this->device.get().createDescriptorSetLayoutUnique(
-                vk::DescriptorSetLayoutCreateInfo{}
-                .setBindings(sceneBindings)
-                );
+            this->descriptorSetLayout.resultImage = this->device.get().createDescriptorSetLayoutUnique(
+                    vk::DescriptorSetLayoutCreateInfo{}
+                    .setBindings(resultImageLayoutBinding)
+                    );
+        }
 
-        vk::DescriptorSetLayoutBinding resultImageLayoutBinding{};
-        resultImageLayoutBinding
-            .setBinding(0)
-            .setDescriptorType(vk::DescriptorType::eStorageImage)
-            .setDescriptorCount(1)
-            .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
-
-        this->descriptorSetLayout.resultImage = this->device.get().createDescriptorSetLayoutUnique(
-                vk::DescriptorSetLayoutCreateInfo{}
-                .setBindings(resultImageLayoutBinding)
-                );
-
-        std::vector<vk::DescriptorSetLayout> layouts{
-            this->descriptorSetLayout.scene.get(), this->descriptorSetLayout.resultImage.get()
-        };
+        std::vector<vk::DescriptorSetLayout> layouts;
+        layouts.push_back(this->descriptorSetLayout.scene.get());
+        layouts.push_back(this->descriptorSetLayout.resultImage.get());
+        layouts.push_back(this->camera.getDescriptorSetLayout());
 
         std::vector<vk::PushConstantRange> pushConstants{
             { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(PushConstant) }
@@ -430,31 +438,36 @@ namespace vlb {
         std::vector<vk::DescriptorPoolSize> poolSizes = {
             {vk::DescriptorType::eAccelerationStructureKHR, 1},
             {vk::DescriptorType::eStorageImage, 1},
+            {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eStorageBuffer, 1}
         };
 
         this->descriptorPool = this->device.get().createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
-                .setMaxSets(2)
+                .setMaxSets(3)
                 .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
                 );
 
-        auto sceneDS = this->device.get().allocateDescriptorSetsUnique(
-                vk::DescriptorSetAllocateInfo{}
-                .setDescriptorPool(this->descriptorPool.get())
-                .setSetLayouts(descriptorSetLayout.scene.get())
-                );
+        {
+            auto sceneDS = this->device.get().allocateDescriptorSetsUnique(
+                    vk::DescriptorSetAllocateInfo{}
+                    .setDescriptorPool(this->descriptorPool.get())
+                    .setSetLayouts(descriptorSetLayout.scene.get())
+                    );
 
-        this->descriptorSet.scene = std::move(sceneDS.front());
+            this->descriptorSet.scene = std::move(sceneDS.front());
+        }
 
-        auto resultImageDS = this->device.get().allocateDescriptorSetsUnique(
-                vk::DescriptorSetAllocateInfo{}
-                .setDescriptorPool(this->descriptorPool.get())
-                .setSetLayouts(descriptorSetLayout.resultImage.get())
-                );
+        {
+            auto resultImageDS = this->device.get().allocateDescriptorSetsUnique(
+                    vk::DescriptorSetAllocateInfo{}
+                    .setDescriptorPool(this->descriptorPool.get())
+                    .setSetLayouts(descriptorSetLayout.resultImage.get())
+                    );
 
-        this->descriptorSet.resultImage = std::move(resultImageDS.front());
+            this->descriptorSet.resultImage = std::move(resultImageDS.front());
+        }
 
         updateSceneDescriptorSets();
         updateResultImageDescriptorSets();
@@ -475,11 +488,16 @@ namespace vlb {
 
         commandBuffer->bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, this->pipeline.get());
 
+        std::vector<vk::DescriptorSet> descriptorSets(0);
+        descriptorSets.push_back(this->descriptorSet.scene.get());
+        descriptorSets.push_back(this->descriptorSet.resultImage.get());
+        descriptorSets.push_back(this->camera.update().getDescriptorSet(imageIndex));
+
         commandBuffer->bindDescriptorSets(
                 vk::PipelineBindPoint::eRayTracingKHR,
                 this->pipelineLayout.get(),
                 0,
-                {this->descriptorSet.scene.get(), this->descriptorSet.resultImage.get()},
+                descriptorSets,
                 nullptr
                 );
 

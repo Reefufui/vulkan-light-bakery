@@ -30,6 +30,7 @@ add_executable(vklb
     src/raytracer.cpp
     src/scene_manager.cpp
     src/ui.cpp
+    src/camera.cpp
 
     src/vendor/define_implementations.cpp
     src/vendor/imgui_impl_glfw.cpp

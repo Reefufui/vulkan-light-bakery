@@ -41,6 +41,7 @@ namespace vlb {
             std::vector<std::string> sceneNames{};
             std::vector<std::string> scenePaths{};
             float lightIntensity = 1.0f;
+            float rotationSpeed;
 
         public:
 

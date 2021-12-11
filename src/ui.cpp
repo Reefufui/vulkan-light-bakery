@@ -268,12 +268,7 @@ namespace vlb {
 
         this->fileDialog = ImGui::FileBrowser{};
         this->fileDialog.SetTitle("Choose model file");
-        this->fileDialog.SetTypeFilters({ ".gltf", ".glb" });
-        std::filesystem::path modelsPath{"assets/models"};
-        if (std::filesystem::exists(modelsPath))
-        {
-            this->fileDialog.SetPwd(modelsPath);
-        }
+        this->fileDialog.SetTypeFilters({ ".gltf", ".glb", ".*" });
 
         deserialize();
     }
@@ -368,6 +363,7 @@ namespace vlb {
             this->lightIntensity = json["lightIntensity"].get<float>();
             this->selectedSceneIndex = json["selectedSceneIndex"].get<int>();
             this->scenePaths = json["scenePaths"].get<std::vector<std::string>>();
+            this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
         }
     }
 
@@ -379,6 +375,7 @@ namespace vlb {
         json["lightIntensity"] = this->lightIntensity;
         json["selectedSceneIndex"] = this->selectedSceneIndex;
         json["scenePaths"] = this->scenePaths;
+        json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
         file << std::setw(4) << json << std::endl;
     }
 
