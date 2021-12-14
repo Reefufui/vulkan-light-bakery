@@ -34,6 +34,7 @@ namespace vlb {
             const int maxFramesInFlight = 2;
             void initUI();
             void initSceneManager();
+            void initCamera();
 
         protected:
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};

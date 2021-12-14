@@ -14,5 +14,5 @@ vec4 rgb2srgb(vec4 linearRGB)
 
 void main()
 {
-    payLoad = rgb2srgb(vec4(0.005f)).rgb;
+    payLoad = rgb2srgb(vec4(0.01f)).rgb;
 }

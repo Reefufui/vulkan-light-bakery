@@ -174,7 +174,9 @@ namespace vlb {
                 swapchainImageViews2,
                 this->surfaceExtent,
                 this->surfaceFormat,
-                this->depthFormat
+                this->depthFormat,
+
+                &this->sceneManager
         };
         this->ui.init(uiInitInfo, commandBuffer);
         flushGraphicsCommandBuffer(commandBuffer);
@@ -190,9 +192,22 @@ namespace vlb {
                 this->commandPool.transfer.get(),
                 this->queue.graphics,
                 this->commandPool.graphics.get(),
-                &this->ui
+                this->ui.getScenePaths()
         };
         this->sceneManager.init(sceneManagerInitInfo);
+    }
+
+    void Renderer::initCamera()
+    {
+        auto[width, height, depth] = this->surfaceExtent;
+        this->camera
+            .setViewingFrustum(Camera::ViewingFrustum{}
+                    .setAspect(static_cast<float>(width) / static_cast<float>(height))
+                    )
+            .setType(Camera::Type::eFirstPerson)
+            .setRotationSpeed(0.25f)
+            .setMovementSpeed(1.0f)
+            .createCameraUBOs(this->device.get(), this->physicalDevice, this->swapChainImages.size());
     }
 
     void Renderer::render()
@@ -201,8 +216,8 @@ namespace vlb {
         {
             glfwPollEvents();
             //TODO: handle window resize here
+            this->ui.update();
             draw();
-            this->sceneManager.update();
             this->currentFrame = (this->currentFrame + 1) % this->maxFramesInFlight;
         }
 
@@ -222,16 +237,7 @@ namespace vlb {
 
         initUI();
         initSceneManager();
-
-        auto[width, height, depth] = this->surfaceExtent;
-        this->camera
-            .setViewingFrustum(Camera::ViewingFrustum{}
-                    .setAspect(static_cast<float>(width) / static_cast<float>(height))
-                    )
-            .setType(Camera::Type::eFirstPerson)
-            .setRotationSpeed(1.0f)
-            .setMovementSpeed(1.0f)
-            .createCameraUBOs(this->device.get(), this->physicalDevice, this->swapChainImages.size());
+        initCamera();
     }
 
     Renderer::~Renderer()

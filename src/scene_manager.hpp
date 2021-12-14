@@ -9,7 +9,6 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "application.hpp"
-#include "ui.hpp"
 
 namespace vlb {
 
@@ -145,7 +144,6 @@ namespace vlb {
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
             std::string name;
-            std::string filename;
 
         private:
 
@@ -167,23 +165,27 @@ namespace vlb {
     class SceneManager
     {
         private:
+
             vk::PhysicalDevice physicalDevice;
             vk::Device device;
-            vk::Queue transferQueue;
-            vk::CommandPool transferCommandPool;
-            vk::Queue graphicsQueue;
-            vk::CommandPool graphicsCommandPool;
-            ImGui::FileBrowser* pFileDialog;
-            std::vector<std::string>* pSceneNames;
-            std::vector<std::string>* pScenePaths;
-            int* pSelectedSceneIndex;
-            bool* pFreeScene;
+
+            struct
+            {
+                vk::Queue transfer;
+                vk::Queue graphics;
+            } queue;
+            struct
+            {
+                vk::CommandPool transfer;
+                vk::CommandPool graphics;
+            } commandPool;
+
+            bool sceneShouldBeFreed;
             bool sceneChangedFlag;
+            int  sceneIndex;
 
-            std::vector<Scene> scenes{};
-
-            void pushScene(std::string& fileName);
-            void popScene(int sceneIndex);
+            std::vector<Scene      > scenes;
+            std::vector<std::string> sceneNames;
 
         public:
             struct InitInfo
@@ -194,17 +196,23 @@ namespace vlb {
                 vk::CommandPool transferCommandPool;
                 vk::Queue graphicsQueue;
                 vk::CommandPool graphicsCommandPool;
-                vlb::UI* pUI;
+                std::vector<std::string> scenePaths;
             };
 
             SceneManager();
             ~SceneManager();
 
-            void init(InitInfo& info);
-            void update();
-            Scene& getScene();
-            bool sceneChanged();
+            void         init(InitInfo& info);
+            Scene&       getScene();
+            const int    getSceneIndex();
+            const size_t getScenesCount();
+            const bool   sceneChanged();
+            std::vector<std::string>& getSceneNames();
 
+            SceneManager& setSceneIndex(int sceneIndex);
+
+            void pushScene(std::string& fileName);
+            void popScene();
     };
 
 }

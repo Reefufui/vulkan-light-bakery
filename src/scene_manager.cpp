@@ -9,6 +9,7 @@
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
+#include <utility>
 
 namespace vlb {
 
@@ -351,7 +352,6 @@ namespace vlb {
 
         if (loaded)
         {
-            this->filename = std::filesystem::absolute(filename);
             this->name = filePath.stem();
 
             const auto& scene = this->model.scenes[0];
@@ -577,49 +577,55 @@ namespace vlb {
     void SceneManager::pushScene(std::string& fileName)
     {
         Scene scene{new Scene_t(fileName)};
-        scene->createBLASBuffers(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->transferQueue, this->transferCommandPool);
-        scene->loadTextures(this->device, this->physicalDevice, this->graphicsQueue, this->graphicsCommandPool);
+        // TODO: call this functions from other file!
+        scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
+        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
+        scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+
         this->scenes.push_back(scene);
+        this->sceneNames.push_back(scene->name); // TODO: string views
+        this->sceneIndex = getScenesCount() - 1;
+
+        this->sceneChangedFlag = true;
     }
 
-    void SceneManager::popScene(int sceneIndex)
+    void SceneManager::popScene()
     {
         this->device.waitIdle();
-        this->scenes.erase(this->scenes.begin() + sceneIndex);
+        this->scenes.erase(this->scenes.begin() + this->sceneIndex);
+        this->sceneNames.erase(this->sceneNames.begin() + this->sceneIndex);
+
+        this->sceneIndex = std::max(0, this->sceneIndex - 1);
+
+        this->sceneChangedFlag = true;
     }
 
     void SceneManager::init(InitInfo& info)
     {
-        this->device = info.device;
-        this->physicalDevice = info.physicalDevice;
-        this->transferQueue = info.transferQueue;
-        this->transferCommandPool = info.transferCommandPool;
-        this->graphicsQueue = info.graphicsQueue;
-        this->graphicsCommandPool = info.graphicsCommandPool;
-        this->pFileDialog = &(info.pUI->getFileDialog());
-        this->pSceneNames = &(info.pUI->getSceneNames());
-        this->pScenePaths = &(info.pUI->getScenePaths());
-        this->pSelectedSceneIndex = &(info.pUI->getSelectedSceneIndex());
-        this->pFreeScene = &(info.pUI->getFreeSceneFlag());
+        this->device               = info.device;
+        this->physicalDevice       = info.physicalDevice;
+        this->queue.transfer       = info.transferQueue;
+        this->commandPool.transfer = info.transferCommandPool;
+        this->queue.graphics       = info.graphicsQueue;
+        this->commandPool.graphics = info.graphicsCommandPool;
 
-        if (!pScenePaths->size())
+        auto scenePaths = info.scenePaths;
+
+        if (!scenePaths.size())
         {
             std::string fileName{"default_blender_cube.gltf"};
             pushScene(fileName);
-            (*this->pSceneNames).push_back(this->scenes.back()->name);
-            (*this->pScenePaths).push_back(this->scenes.back()->filename);
-            *this->pSelectedSceneIndex = 0;
         }
         else
         {
             try
             {
-                for (auto& filePath : (*this->pScenePaths))
+                auto sceneIndex = this->sceneIndex;
+                for (auto& filePath : scenePaths)
                 {
                     pushScene(filePath);
-                    (*this->pSceneNames).push_back(this->scenes.back()->name);
                 }
+                this->sceneIndex = sceneIndex;
             }
             catch(std::runtime_error& e)
             {
@@ -628,67 +634,47 @@ namespace vlb {
         }
 
         this->sceneChangedFlag = false;
-    }
-
-    void SceneManager::update()
-    {
-        auto& sceneIndex = *this->pSelectedSceneIndex;
-        auto& sceneNames = *this->pSceneNames;
-        auto& scenePaths = *this->pScenePaths;
-
-        this->sceneChangedFlag = false;
-
-        // "-"
-        if (*this->pFreeScene)
-        {
-            popScene(sceneIndex);
-            sceneNames.erase(sceneNames.begin() + sceneIndex);
-            scenePaths.erase(scenePaths.begin() + sceneIndex);
-            sceneIndex = std::max(0, sceneIndex - 1);
-
-            this->sceneChangedFlag = true;
-
-            *this->pFreeScene = false;
-        }
-
-        // "+"
-        if (this->pFileDialog->HasSelected())
-        {
-            std::string fileName{this->pFileDialog->GetSelected().string()};
-            try
-            {
-                pushScene(fileName);
-                sceneNames.push_back(this->scenes.back()->name);
-                scenePaths.push_back(this->scenes.back()->filename);
-                sceneIndex = static_cast<int>(sceneNames.size()) - 1;
-
-                this->sceneChangedFlag = true;
-
-            }
-            catch(std::runtime_error& e)
-            {
-                std::cerr << e.what() << "\n";
-            }
-            this->pFileDialog->ClearSelected();
-        }
-
-        // "drop-down menu"
-        static int oldSceneIndex = 0;
-        if (oldSceneIndex != sceneIndex)
-        {
-            this->sceneChangedFlag = true;
-            oldSceneIndex = sceneIndex;
-        }
     }
 
     Scene& SceneManager::getScene()
     {
-        return scenes[*pSelectedSceneIndex];
+        return this->scenes[this->sceneIndex];
     }
 
-    bool SceneManager::sceneChanged()
+    const int SceneManager::getSceneIndex()
     {
-        return this->sceneChangedFlag;
+        return this->sceneIndex;
+    }
+
+    std::vector<std::string>& SceneManager::getSceneNames()
+    {
+        return this->sceneNames;
+    }
+
+    const size_t SceneManager::getScenesCount()
+    {
+        return this->scenes.size();
+    }
+
+    SceneManager& SceneManager::setSceneIndex(int sceneIndex)
+    {
+        this->sceneIndex = sceneIndex;
+
+        static int oldSceneIndex = 0;
+        if (this->sceneIndex != oldSceneIndex)
+        {
+            oldSceneIndex = this->sceneIndex;
+            this->sceneChangedFlag = true;
+        }
+
+        return *this;
+    }
+
+    const bool SceneManager::sceneChanged()
+    {
+        bool sceneChanged = false;
+        std::swap(sceneChanged, this->sceneChangedFlag);
+        return sceneChanged;
     }
 
     SceneManager::SceneManager()

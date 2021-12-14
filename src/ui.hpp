@@ -4,6 +4,7 @@
 #define UI_HPP
 
 #include "application.hpp"
+#include "scene_manager.hpp"
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -36,20 +37,15 @@ namespace vlb {
             vk::Format surfaceFormat;
             vk::Format depthFormat;
 
-            int selectedSceneIndex = 0;
-            bool freeSceneFlag = false;
-            std::vector<std::string> sceneNames{};
+            vlb::SceneManager* pSceneManager;
+            void sceneManager();
+
             std::vector<std::string> scenePaths{};
             float lightIntensity = 1.0f;
-            float rotationSpeed;
 
         public:
 
-            ImGui::FileBrowser& getFileDialog();
-            std::vector<std::string>& getSceneNames();
-            std::vector<std::string>& getScenePaths();
-            int& getSelectedSceneIndex();
-            bool& getFreeSceneFlag();
+            const std::vector<std::string>& getScenePaths();
             float& getLightIntensity();
 
             struct InterfaceInitInfo
@@ -63,9 +59,12 @@ namespace vlb {
                 vk::Extent3D surfaceExtent;
                 vk::Format surfaceFormat;
                 vk::Format depthFormat;
+
+                vlb::SceneManager* pSceneManager;
             };
 
             void init(InterfaceInitInfo& info, vk::CommandBuffer& commandBuffer);
+            void update();
             void draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer);
             void serialize();
             void deserialize();
