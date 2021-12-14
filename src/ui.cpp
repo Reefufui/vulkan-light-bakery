@@ -151,6 +151,8 @@ namespace vlb {
         this->surfaceFormat = info.surfaceFormat;
         this->depthFormat = info.depthFormat;
 
+        this->pSceneManager = info.pSceneManager;
+
         createDepthBuffer();
         createImguiRenderPass();
         createImguiFrameBuffer();
@@ -268,44 +270,80 @@ namespace vlb {
 
         this->fileDialog = ImGui::FileBrowser{};
         this->fileDialog.SetTitle("Choose model file");
-        this->fileDialog.SetTypeFilters({ ".gltf", ".glb" });
-        std::filesystem::path modelsPath{"assets/models"};
-        if (std::filesystem::exists(modelsPath))
-        {
-            this->fileDialog.SetPwd(modelsPath);
-        }
+        this->fileDialog.SetTypeFilters({ ".gltf", ".glb", ".*" });
 
         deserialize();
-    }
-
-    ImGui::FileBrowser& UI::getFileDialog()
-    {
-        return this->fileDialog;
-    }
-
-    std::vector<std::string>& UI::getSceneNames()
-    {
-        return this->sceneNames;
-    }
-
-    std::vector<std::string>& UI::getScenePaths()
-    {
-        return this->scenePaths;
-    }
-
-    int& UI::getSelectedSceneIndex()
-    {
-        return this->selectedSceneIndex;
-    }
-
-    bool& UI::getFreeSceneFlag()
-    {
-        return this->freeSceneFlag;
     }
 
     float& UI::getLightIntensity()
     {
         return this->lightIntensity;
+    }
+
+    const std::vector<std::string>& UI::getScenePaths()
+    {
+        return this->scenePaths;
+    }
+
+    void UI::sceneManager()
+    {
+        ImGui::Text("Choose model to render:");
+
+        int sceneIndex = this->pSceneManager->getSceneIndex();
+        ImGui::Combo("", &sceneIndex, this->pSceneManager->getSceneNames(), 20);
+        this->pSceneManager->setSceneIndex(sceneIndex);
+
+        {
+            ImGui::SameLine();
+
+            if (ImGui::Button("+", {26, 26}))
+            {
+                this->fileDialog.Open();
+            }
+
+            if (this->fileDialog.HasSelected())
+            {
+                this->scenePaths.push_back(this->fileDialog.GetSelected().string());
+                try
+                {
+                    this->pSceneManager->pushScene(this->scenePaths.back());
+
+                }
+                catch(std::runtime_error& e)
+                {
+                    std::cerr << e.what() << "\n";
+                }
+                this->fileDialog.ClearSelected();
+            }
+        }
+
+        if (this->pSceneManager->getScenesCount() > 1)
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("-", {26, 26}))
+            {
+                this->scenePaths.erase(this->scenePaths.begin() + sceneIndex);
+                this->pSceneManager->popScene();
+            }
+        }
+    }
+
+    void UI::update()
+    {
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::Begin("Vulkan Light Bakery");
+        {
+            sceneManager();
+
+            ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
+        }
+        ImGui::End();
+
+        fileDialog.Display();
+        ImGui::EndFrame();
     }
 
     void UI::draw(uint32_t imageIndex, vk::CommandBuffer& commandBuffer)
@@ -323,36 +361,8 @@ namespace vlb {
             .setRenderArea(vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(width, height)))
             .setClearValues(clearValues);
 
-        commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Vulkan Light Bakery");
-        {
-            ImGui::Text("Choose model to render:");
-            ImGui::Combo("", &this->selectedSceneIndex, this->sceneNames, 20);
-            ImGui::SameLine();
-            if (ImGui::Button("+", {26, 26}))
-            {
-                fileDialog.Open();
-            }
-            if (this->sceneNames.size() > 1)
-            {
-                ImGui::SameLine();
-                if (ImGui::Button("-", {26, 26}))
-                {
-                    this->freeSceneFlag = true;
-                }
-            }
-
-            ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
-        }
-        ImGui::End();
-
-        fileDialog.Display();
-        ImGui::EndFrame();
         ImGui::Render();
+        commandBuffer.beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
         commandBuffer.endRenderPass();
     }
@@ -366,8 +376,9 @@ namespace vlb {
             nlohmann::json json{};
             file >> json;
             this->lightIntensity = json["lightIntensity"].get<float>();
-            this->selectedSceneIndex = json["selectedSceneIndex"].get<int>();
+            this->pSceneManager->setSceneIndex(json["selectedSceneIndex"].get<int>());
             this->scenePaths = json["scenePaths"].get<std::vector<std::string>>();
+            this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
         }
     }
 
@@ -377,8 +388,9 @@ namespace vlb {
 
         nlohmann::json json{};
         json["lightIntensity"] = this->lightIntensity;
-        json["selectedSceneIndex"] = this->selectedSceneIndex;
+        json["selectedSceneIndex"] = this->pSceneManager->getSceneIndex();
         json["scenePaths"] = this->scenePaths;
+        json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
         file << std::setw(4) << json << std::endl;
     }
 

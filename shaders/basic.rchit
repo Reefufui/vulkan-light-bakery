@@ -68,7 +68,7 @@ void main()
 
     const vec4 diffuse = vec4(1.0f) * max(dot(worldNrm, normalize(toLight)), 0.0f);
 
-    const vec4 color = vec4(0.005f) + pc.lightIntensity * diffuse;
+    const vec4 color = vec4(0.05f) + pc.lightIntensity * diffuse;
 
     payLoad = rgb2srgb(color).rgb;
 }
