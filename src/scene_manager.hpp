@@ -132,6 +132,10 @@ namespace vlb {
                 glm::vec3 scale;
                 glm::mat4 rotation;
                 glm::mat4 matrix;
+
+                glm::mat4 localMatrix();
+                glm::mat4 getMatrix();
+                void update();
             };
 
             Scene_t() = delete;

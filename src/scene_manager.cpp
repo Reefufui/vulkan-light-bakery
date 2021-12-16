@@ -13,6 +13,37 @@
 
 namespace vlb {
 
+    glm::mat4 Scene_t::Node_t::localMatrix()
+    {
+        return glm::translate(glm::mat4(1.0f), this->translation) * glm::mat4(this->rotation) * glm::scale(glm::mat4(1.0f), this->scale) * this->matrix;
+    }
+
+    glm::mat4 Scene_t::Node_t::getMatrix()
+    {
+        glm::mat4 matrix = localMatrix();
+        Node p = this->parent;
+        while (p)
+        {
+            matrix = p->localMatrix() * matrix;
+            p = p->parent;
+        }
+        return matrix;
+    }
+
+    void Scene_t::Node_t::update()
+    {
+        if (mesh)
+        {
+            glm::mat4 matrix = getMatrix();
+            memcpy(mesh->uniformBuffer.mapped, &matrix, sizeof(glm::mat4));
+        }
+
+        for (auto& child : children)
+        {
+            child->update();
+        }
+    }
+
     auto Scene_t::loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label)
     {
         int byteStride{};
