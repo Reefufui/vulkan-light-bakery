@@ -613,7 +613,7 @@ namespace vlb {
 
         if (!scenePaths.size())
         {
-            std::string fileName{"default_blender_cube.gltf"};
+            std::string fileName{VLB_DEFAULT_SCENE_NAME};
             pushScene(fileName);
         }
         else

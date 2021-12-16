@@ -5,6 +5,7 @@
 
 #include "application.hpp"
 #include "scene_manager.hpp"
+#include "camera.hpp"
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -38,7 +39,9 @@ namespace vlb {
             vk::Format depthFormat;
 
             vlb::SceneManager* pSceneManager;
+            vlb::Camera*       pCamera;
             void sceneManager();
+            void camera();
 
             std::vector<std::string> scenePaths{};
             float lightIntensity = 1.0f;
@@ -61,6 +64,7 @@ namespace vlb {
                 vk::Format depthFormat;
 
                 vlb::SceneManager* pSceneManager;
+                vlb::Camera* pCamera;
             };
 
             void init(InterfaceInitInfo& info, vk::CommandBuffer& commandBuffer);

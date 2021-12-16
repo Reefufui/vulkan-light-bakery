@@ -152,6 +152,7 @@ namespace vlb {
         this->depthFormat = info.depthFormat;
 
         this->pSceneManager = info.pSceneManager;
+        this->pCamera = info.pCamera;
 
         createDepthBuffer();
         createImguiRenderPass();
@@ -273,6 +274,11 @@ namespace vlb {
         this->fileDialog.SetTypeFilters({ ".gltf", ".glb", ".*" });
 
         deserialize();
+
+        if (this->scenePaths.size() == 0)
+        {
+            this->scenePaths.push_back(VLB_DEFAULT_SCENE_NAME);
+        }
     }
 
     float& UI::getLightIntensity()
@@ -283,6 +289,24 @@ namespace vlb {
     const std::vector<std::string>& UI::getScenePaths()
     {
         return this->scenePaths;
+    }
+
+    void UI::camera()
+    {
+        ImGui::Text("Camera Settings");
+
+        auto ms = this->pCamera->getMovementSpeed();
+        ImGui::SliderFloat("Movement speed", &ms, 0.0f, 50.0f);
+        this->pCamera->setMovementSpeed(ms);
+
+        auto rs = this->pCamera->getRotationSpeed();
+        ImGui::SliderFloat("Mouse sensitivity", &rs, 0.0f, 1.0f);
+        this->pCamera->setRotationSpeed(rs);
+
+            if (ImGui::Button("Reset"))
+            {
+                this->pCamera->reset();
+            }
     }
 
     void UI::sceneManager()
@@ -303,11 +327,11 @@ namespace vlb {
 
             if (this->fileDialog.HasSelected())
             {
-                this->scenePaths.push_back(this->fileDialog.GetSelected().string());
                 try
                 {
-                    this->pSceneManager->pushScene(this->scenePaths.back());
-
+                    auto path = this->fileDialog.GetSelected().string();
+                    this->pSceneManager->pushScene(path);
+                    this->scenePaths.push_back(path);
                 }
                 catch(std::runtime_error& e)
                 {
@@ -337,7 +361,9 @@ namespace vlb {
         ImGui::Begin("Vulkan Light Bakery");
         {
             sceneManager();
+            camera();
 
+            ImGui::Text("Other Settings");
             ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
         }
         ImGui::End();
@@ -377,6 +403,8 @@ namespace vlb {
             file >> json;
             this->lightIntensity = json["lightIntensity"].get<float>();
             this->pSceneManager->setSceneIndex(json["selectedSceneIndex"].get<int>());
+            this->pCamera->setMovementSpeed(json["movementSpeed"].get<float>());
+            this->pCamera->setRotationSpeed(json["mouse sensitivity"].get<float>());
             this->scenePaths = json["scenePaths"].get<std::vector<std::string>>();
             this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
         }
@@ -391,6 +419,8 @@ namespace vlb {
         json["selectedSceneIndex"] = this->pSceneManager->getSceneIndex();
         json["scenePaths"] = this->scenePaths;
         json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
+        json["movementSpeed"] = this->pCamera->getMovementSpeed();
+        json["mouse sensitivity"] = this->pCamera->getRotationSpeed();
         file << std::setw(4) << json << std::endl;
     }
 

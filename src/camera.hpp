@@ -10,7 +10,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "application.hpp"
-#include "ui.hpp"
 
 namespace vlb {
 
@@ -27,7 +26,7 @@ namespace vlb {
                 bool  flipY;
 
                 ViewingFrustum()
-                    : aspect(1.0f), yfov(45.f), zfar(10000.f), znear(0.001f)
+                    : aspect(1.0f), yfov(60.f), zfar(10000000.f), znear(0.000001f)
                 {
                 }
 
@@ -51,8 +50,12 @@ namespace vlb {
             Camera& setMovementSpeed(float movementSpeed);
             Camera& createCameraUBOs(vk::Device device, vk::PhysicalDevice physicalDevice, uint32_t count);
 
+            const float getRotationSpeed();
+            const float getMovementSpeed();
+
             vk::DescriptorSetLayout& getDescriptorSetLayout();
             Camera& update();
+            Camera& reset();
             vk::DescriptorSet getDescriptorSet(uint32_t imageIndex);
 
 
@@ -91,7 +94,7 @@ namespace vlb {
 
             struct
             {
-                float rotation = 1.0f;
+                float rotation = 0.25f;
                 float movement = 1.0f;
             } speed;
 

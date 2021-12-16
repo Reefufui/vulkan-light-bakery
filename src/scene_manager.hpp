@@ -3,6 +3,8 @@
 #ifndef SCENE_MANAGER_HPP
 #define SCENE_MANAGER_HPP
 
+#define VLB_DEFAULT_SCENE_NAME "default_blender_cube.gltf"
+
 #include <tiny_gltf.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

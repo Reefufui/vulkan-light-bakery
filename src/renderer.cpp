@@ -176,7 +176,8 @@ namespace vlb {
                 this->surfaceFormat,
                 this->depthFormat,
 
-                &this->sceneManager
+                &this->sceneManager,
+                &this->camera
         };
         this->ui.init(uiInitInfo, commandBuffer);
         flushGraphicsCommandBuffer(commandBuffer);
@@ -205,8 +206,6 @@ namespace vlb {
                     .setAspect(static_cast<float>(width) / static_cast<float>(height))
                     )
             .setType(Camera::Type::eFirstPerson)
-            .setRotationSpeed(0.25f)
-            .setMovementSpeed(1.0f)
             .createCameraUBOs(this->device.get(), this->physicalDevice, this->swapChainImages.size());
     }
 

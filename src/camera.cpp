@@ -2,6 +2,8 @@
 
 #include "camera.hpp"
 
+#include <imgui.h>
+
 #include <iostream>
 
 namespace vlb {
@@ -39,6 +41,16 @@ namespace vlb {
         return *this;
     }
 
+    const float Camera::getRotationSpeed()
+    {
+        return this->speed.rotation;
+    }
+
+    const float Camera::getMovementSpeed()
+    {
+        return this->speed.movement;
+    }
+
     Camera& Camera::createCameraUBOs(vk::Device device, vk::PhysicalDevice physicalDevice, uint32_t count)
     {
         vk::BufferUsageFlags    usage = vk::BufferUsageFlagBits::eUniformBuffer;
@@ -61,13 +73,18 @@ namespace vlb {
     {
         ImGuiIO& io = ImGui::GetIO();
 
-        auto[dx, dy] = io.MouseDelta;
-        auto newPitch = this->pitch - dy * speed.rotation;
-        this->pitch = (newPitch > -90.0f && newPitch < 90.0f) ? newPitch : this->pitch;
-        this->yaw   -= dx * speed.rotation;
+        if (!io.WantCaptureMouse)
+        {
+            auto[dx, dy] = ImGui::IsAnyMouseDown() ? io.MouseDelta : ImVec2(0.0f, 0.0f);
+            auto newPitch = this->pitch - dy * speed.rotation;
+            this->pitch = (newPitch > -90.0f && newPitch < 90.0f) ? newPitch : this->pitch;
+            this->yaw   -= dx * speed.rotation;
+            this->yaw   = static_cast<float>(static_cast<int>(this->yaw) % 360);
+        }
 
         if (type == Type::eFirstPerson)
         {
+
             this->forward.x = -glm::cos(glm::radians(this->pitch)) * glm::sin(glm::radians(this->yaw));
             this->forward.y = glm::sin(glm::radians(this->pitch));
             this->forward.z = glm::cos(glm::radians(this->pitch)) * glm::cos(glm::radians(this->yaw));
@@ -78,16 +95,17 @@ namespace vlb {
             float speedModifier = io.KeyShift ? 4.0f : io.KeyCtrl ? 0.25f : 1.0f;
             float length = io.DeltaTime * speed.movement * speedModifier;
 
-            if (io.KeysDown['W'])
-                this->position -= forward * length;
-            if (io.KeysDown['S'])
-                this->position += forward * length;
-            if (io.KeysDown['D'])
-                this->position += right * length;
-            if (io.KeysDown['A'])
-                this->position -= right * length;
-
-            updateViewMatrix();
+            if (!io.WantCaptureKeyboard)
+            {
+                if (io.KeysDown['W'])
+                    this->position -= forward * length;
+                if (io.KeysDown['S'])
+                    this->position += forward * length;
+                if (io.KeysDown['D'])
+                    this->position += right * length;
+                if (io.KeysDown['A'])
+                    this->position -= right * length;
+            }
         }
 
         if (io.KeysDown['E'])
@@ -101,6 +119,17 @@ namespace vlb {
             std::cout << "p(" << pitch << ")\n";
             std::cout << "y(" << yaw << ")\n";
         }
+
+        updateViewMatrix();
+
+        return *this;
+    }
+
+    Camera& Camera::reset()
+    {
+        this->pitch = 0.0f;
+        this->yaw = 0.0f;
+        this->position  = glm::vec3();
 
         return *this;
     }
