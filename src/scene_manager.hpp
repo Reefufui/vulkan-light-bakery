@@ -11,6 +11,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "application.hpp"
+#include "camera.hpp"
 
 namespace vlb {
 
@@ -143,6 +144,8 @@ namespace vlb {
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void createUBOsForCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count);
+            void setViewingFrustumForCameras(ViewingFrustum frustum);
 
             Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
@@ -153,19 +156,22 @@ namespace vlb {
 
         private:
 
-            tinygltf::Model model;
+            tinygltf::Model    model;
             tinygltf::TinyGLTF loader;
 
-            std::vector<Node> nodes;
-            std::vector<Node> linearNodes;
-            std::vector<Sampler> samplers;
-            std::vector<Texture> textures;
+            std::vector<Node>     nodes;
+            std::vector<Node>     linearNodes;
+            std::vector<Sampler>  samplers;
             std::vector<Material> materials;
+            std::vector<Camera>   cameras;
+
+            std::vector<Texture>  textures;
 
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
             void loadSamplers();
             void loadMaterials();
+            void loadCameras();
     };
 
     class SceneManager
@@ -186,6 +192,9 @@ namespace vlb {
                 vk::CommandPool graphics;
             } commandPool;
 
+            uint32_t       swapchainImagesCount;
+            ViewingFrustum frustum;
+
             bool sceneShouldBeFreed;
             bool sceneChangedFlag;
             int  sceneIndex;
@@ -203,6 +212,7 @@ namespace vlb {
                 vk::Queue graphicsQueue;
                 vk::CommandPool graphicsCommandPool;
                 std::vector<std::string> scenePaths;
+                uint32_t swapchainImagesCount;
             };
 
             SceneManager();

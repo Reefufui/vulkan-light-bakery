@@ -169,6 +169,18 @@ namespace vlb {
         linearNodes.push_back(newNode);
     }
 
+    void Scene_t::loadCameras()
+    {
+        // TODO: load gltf cameras as well
+        Camera camera{};
+        camera
+            .setType(Camera::Type::eFirstPerson)
+            .setRotationSpeed(0.2f)
+            .setMovementSpeed(1.0f);
+
+        this->cameras.push_back(camera);
+    }
+
     void Scene_t::loadSamplers()
     {
         for (auto& gltfSampler : this->model.samplers)
@@ -369,7 +381,10 @@ namespace vlb {
         {
             loaded = loader.LoadBinaryFromFile(&this->model, &err, &warn, filename);
         }
-        else assert(0);
+        else
+        {
+            throw std::runtime_error("Not supported file format");
+        }
 
         if (!warn.empty())
         {
@@ -393,6 +408,7 @@ namespace vlb {
             }
 
             loadSamplers();
+            loadCameras();
             //TODO: loadAnimations();
             //TODO: loadSkins();
 
@@ -405,6 +421,22 @@ namespace vlb {
         else
         {
             throw std::runtime_error("Failed to parse glTF");
+        }
+    }
+
+    void Scene_t::createUBOsForCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count)
+    {
+        for (auto& camera : cameras)
+        {
+            camera.createCameraUBOs(device, physicalDevice, count);
+        }
+    }
+
+    void Scene_t::setViewingFrustumForCameras(ViewingFrustum frustum)
+    {
+        for (auto& camera : cameras)
+        {
+            camera.setViewingFrustum(frustum);
         }
     }
 
@@ -608,9 +640,11 @@ namespace vlb {
     void SceneManager::pushScene(std::string& fileName)
     {
         Scene scene{new Scene_t(fileName)};
-        // TODO: call this functions from other file!
+        // should call this functions from other file (im not sure yet)
         scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
         scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
+        scene->createUBOsForCameras(this->device, this->physicalDevice, this->swapchainImagesCount);
+        //
         scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
 
         this->scenes.push_back(scene);
@@ -639,6 +673,7 @@ namespace vlb {
         this->commandPool.transfer = info.transferCommandPool;
         this->queue.graphics       = info.graphicsQueue;
         this->commandPool.graphics = info.graphicsCommandPool;
+        this->swapchainImagesCount = info.swapchainImagesCount;
 
         auto scenePaths = info.scenePaths;
 
@@ -665,6 +700,8 @@ namespace vlb {
         }
 
         this->sceneChangedFlag = false;
+
+        this->frustum = std::make_shared<ViewingFrustum_t>();
     }
 
     Scene& SceneManager::getScene()

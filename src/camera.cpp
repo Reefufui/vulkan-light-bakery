@@ -8,11 +8,11 @@
 
 namespace vlb {
 
-    Camera& Camera::setViewingFrustum(Camera::ViewingFrustum frustum)
+    Camera& Camera::setViewingFrustum(ViewingFrustum frustum)
     {
-        assert(frustum.znear < frustum.zfar);
-        assert(frustum.yfov > 0);
-        assert(frustum.aspect > 0);
+        assert(frustum->znear < frustum->zfar);
+        assert(frustum->yfov > 0);
+        assert(frustum->aspect > 0);
 
         this->frustum = frustum;
 
@@ -142,12 +142,12 @@ namespace vlb {
     void Camera::updateProjMatrix()
     {
         this->matrix.projection = glm::perspective(
-                glm::radians(this->frustum.yfov),
-                this->frustum.aspect,
-                this->frustum.znear,
-                this->frustum.zfar );
+                glm::radians(this->frustum->yfov),
+                this->frustum->aspect,
+                this->frustum->znear,
+                this->frustum->zfar );
 
-        this->matrix.projection[1][1] *= this->frustum.flipY ? -1.0f : 1.0f;
+        this->matrix.projection[1][1] *= this->frustum->flipY ? -1.0f : 1.0f;
     }
 
     void Camera::updateUBO(uint32_t imageIndex)

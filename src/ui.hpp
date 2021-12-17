@@ -39,7 +39,6 @@ namespace vlb {
             vk::Format depthFormat;
 
             vlb::SceneManager* pSceneManager;
-            vlb::Camera*       pCamera;
             void sceneManager();
             void camera();
 
@@ -64,7 +63,6 @@ namespace vlb {
                 vk::Format depthFormat;
 
                 vlb::SceneManager* pSceneManager;
-                vlb::Camera* pCamera;
             };
 
             void init(InterfaceInitInfo& info, vk::CommandBuffer& commandBuffer);

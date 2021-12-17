@@ -152,7 +152,6 @@ namespace vlb {
         this->depthFormat = info.depthFormat;
 
         this->pSceneManager = info.pSceneManager;
-        this->pCamera = info.pCamera;
 
         createDepthBuffer();
         createImguiRenderPass();
@@ -295,6 +294,7 @@ namespace vlb {
     {
         ImGui::Text("Camera Settings");
 
+        /*
         auto ms = this->pCamera->getMovementSpeed();
         ImGui::SliderFloat("Movement speed", &ms, 0.0f, 50.0f);
         this->pCamera->setMovementSpeed(ms);
@@ -307,6 +307,7 @@ namespace vlb {
             {
                 this->pCamera->reset();
             }
+            */
     }
 
     void UI::sceneManager()
@@ -403,8 +404,10 @@ namespace vlb {
             file >> json;
             this->lightIntensity = json["lightIntensity"].get<float>();
             this->pSceneManager->setSceneIndex(json["selectedSceneIndex"].get<int>());
+            /*
             this->pCamera->setMovementSpeed(json["movementSpeed"].get<float>());
             this->pCamera->setRotationSpeed(json["mouse sensitivity"].get<float>());
+            */
             this->scenePaths = json["scenePaths"].get<std::vector<std::string>>();
             this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
         }
@@ -419,8 +422,10 @@ namespace vlb {
         json["selectedSceneIndex"] = this->pSceneManager->getSceneIndex();
         json["scenePaths"] = this->scenePaths;
         json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
+        /*
         json["movementSpeed"] = this->pCamera->getMovementSpeed();
         json["mouse sensitivity"] = this->pCamera->getRotationSpeed();
+        */
         file << std::setw(4) << json << std::endl;
     }
 

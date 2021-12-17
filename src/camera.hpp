@@ -13,30 +13,32 @@
 
 namespace vlb {
 
+    struct ViewingFrustum_t;
+    typedef std::shared_ptr<ViewingFrustum_t> ViewingFrustum;
+    struct ViewingFrustum_t
+    {
+        float aspect;
+        float yfov;
+        float zfar;
+        float znear;
+
+        bool  flipY;
+
+        ViewingFrustum_t()
+            : aspect(1.0f), yfov(60.f), zfar(10000.f), znear(0.001f)
+        {
+        }
+
+        ViewingFrustum_t& setAspect(float aspect)
+        {
+            this->aspect = aspect;
+            return *this;
+        }
+    };
+
     class Camera
     {
         public:
-            struct ViewingFrustum
-            {
-                float aspect;
-                float yfov;
-                float zfar;
-                float znear;
-
-                bool  flipY;
-
-                ViewingFrustum()
-                    : aspect(1.0f), yfov(60.f), zfar(10000000.f), znear(0.000001f)
-                {
-                }
-
-                ViewingFrustum& setAspect(float aspect)
-                {
-                    this->aspect = aspect;
-                    return *this;
-                }
-            };
-
             enum class Type
             {
                 eArcBall,
@@ -44,7 +46,7 @@ namespace vlb {
                 eTypeCount
             };
 
-            Camera& setViewingFrustum(Camera::ViewingFrustum frustum);
+            Camera& setViewingFrustum(ViewingFrustum frustum);
             Camera& setType(Camera::Type type);
             Camera& setRotationSpeed(float rotationSpeed);
             Camera& setMovementSpeed(float movementSpeed);
