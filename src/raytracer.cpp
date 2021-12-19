@@ -255,7 +255,7 @@ namespace vlb {
         std::vector<vk::DescriptorSetLayout> layouts;
         layouts.push_back(this->descriptorSetLayout.scene.get());
         layouts.push_back(this->descriptorSetLayout.resultImage.get());
-        layouts.push_back(this->camera.getDescriptorSetLayout());
+        layouts.push_back(this->sceneManager.getCamera()->getDescriptorSetLayout());
 
         std::vector<vk::PushConstantRange> pushConstants{
             { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(PushConstant) }
@@ -491,7 +491,7 @@ namespace vlb {
         std::vector<vk::DescriptorSet> descriptorSets(0);
         descriptorSets.push_back(this->descriptorSet.scene.get());
         descriptorSets.push_back(this->descriptorSet.resultImage.get());
-        descriptorSets.push_back(this->camera.update().getDescriptorSet(imageIndex));
+        descriptorSets.push_back(this->sceneManager.getCamera()->update()->getDescriptorSet(imageIndex));
 
         commandBuffer->bindDescriptorSets(
                 vk::PipelineBindPoint::eRayTracingKHR,

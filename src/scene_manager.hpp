@@ -139,13 +139,34 @@ namespace vlb {
                 void update();
             };
 
+            struct CreateInfo
+            {
+                struct CameraInfo
+                {
+                    float rotationSpeed;
+                    float movementSpeed;
+                    glm::vec3 position;
+                    float yaw;
+                    float pitch;
+                };
+                std::vector<CameraInfo> cameras;
+                int cameraIndex;
+                std::string name;
+                std::string path;
+            };
+
             Scene_t() = delete;
             Scene_t(std::string& filename);
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
-            void createUBOsForCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count);
+            void loadCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count);
             void setViewingFrustumForCameras(ViewingFrustum frustum);
+            Camera getCamera(int index = -1);
+            void setCameraIndex(int cameraIndex);
+            const int getCameraIndex();
+            void pushCamera(Camera camera);
+            const size_t getCamerasCount();
 
             Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
@@ -153,6 +174,7 @@ namespace vlb {
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
             std::string name;
+            std::string path;
 
         private:
 
@@ -167,11 +189,12 @@ namespace vlb {
 
             std::vector<Texture>  textures;
 
+            int cameraIndex;
+
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
             void loadSamplers();
             void loadMaterials();
-            void loadCameras();
     };
 
     class SceneManager
@@ -211,7 +234,6 @@ namespace vlb {
                 vk::CommandPool transferCommandPool;
                 vk::Queue graphicsQueue;
                 vk::CommandPool graphicsCommandPool;
-                std::vector<std::string> scenePaths;
                 uint32_t swapchainImagesCount;
             };
 
@@ -219,15 +241,17 @@ namespace vlb {
             ~SceneManager();
 
             void         init(InitInfo& info);
-            Scene&       getScene();
+            Scene&       getScene(int index = -1);
             const int    getSceneIndex();
             const size_t getScenesCount();
             const bool   sceneChanged();
             std::vector<std::string>& getSceneNames();
+            Camera       getCamera();
 
             SceneManager& setSceneIndex(int sceneIndex);
 
             void pushScene(std::string& fileName);
+            void pushScene(Scene_t::CreateInfo ci);
             void popScene();
     };
 

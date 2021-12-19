@@ -192,7 +192,6 @@ namespace vlb {
                 this->commandPool.transfer.get(),
                 this->queue.graphics,
                 this->commandPool.graphics.get(),
-                this->ui.getScenePaths(),
                 static_cast<uint32_t>(this->swapchainImageViews.size())
         };
         this->sceneManager.init(sceneManagerInitInfo);
@@ -223,8 +222,8 @@ namespace vlb {
         createDrawCommandBuffers();
         createSyncObjects();
 
-        initUI();
         initSceneManager();
+        initUI();
     }
 
     Renderer::~Renderer()

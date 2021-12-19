@@ -35,6 +35,7 @@ add_executable(vklb
     src/vendor/define_implementations.cpp
     src/vendor/imgui_impl_glfw.cpp
     src/vendor/imgui_impl_vulkan.cpp
+    src/vendor/imgui_stdlib.cpp
     )
 
 target_link_libraries(vklb ${CONAN_LIBS} -ldl)

@@ -6,7 +6,6 @@
 #include "application.hpp"
 #include "scene_manager.hpp"
 #include "ui.hpp"
-#include "camera.hpp"
 
 namespace vlb {
 
@@ -55,7 +54,6 @@ namespace vlb {
 
             SceneManager sceneManager;
             UI ui;
-            Camera camera;
 
         public:
 

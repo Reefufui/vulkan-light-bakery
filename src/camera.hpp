@@ -36,7 +36,9 @@ namespace vlb {
         }
     };
 
-    class Camera
+    struct Camera_t;
+    typedef std::shared_ptr<Camera_t> Camera;
+    struct Camera_t : public std::enable_shared_from_this<Camera_t>
     {
         public:
             enum class Type
@@ -46,22 +48,28 @@ namespace vlb {
                 eTypeCount
             };
 
-            Camera& setViewingFrustum(ViewingFrustum frustum);
-            Camera& setType(Camera::Type type);
-            Camera& setRotationSpeed(float rotationSpeed);
-            Camera& setMovementSpeed(float movementSpeed);
-            Camera& createCameraUBOs(vk::Device device, vk::PhysicalDevice physicalDevice, uint32_t count);
+            Camera setViewingFrustum(ViewingFrustum frustum);
+            Camera setType(Camera_t::Type type);
+            Camera setRotationSpeed(float rotationSpeed);
+            Camera setMovementSpeed(float movementSpeed);
+            Camera setPosition(glm::vec3 position);
+            Camera setPitch(float pitch);
+            Camera setYaw(float yaw);
+            Camera createCameraUBOs(vk::Device device, vk::PhysicalDevice physicalDevice, uint32_t count);
 
             const float getRotationSpeed();
             const float getMovementSpeed();
+            const glm::vec3 getPosition();
+            const float getPitch();
+            const float getYaw();
+
 
             vk::DescriptorSetLayout& getDescriptorSetLayout();
-            Camera& update();
-            Camera& reset();
+            Camera update();
+            Camera reset();
             vk::DescriptorSet getDescriptorSet(uint32_t imageIndex);
 
-
-            Camera(){};
+            Camera_t(){};
 
         private:
 

@@ -169,16 +169,18 @@ namespace vlb {
         linearNodes.push_back(newNode);
     }
 
-    void Scene_t::loadCameras()
+    void Scene_t::loadCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count)
     {
         // TODO: load gltf cameras as well
-        Camera camera{};
+        Camera camera{new Camera_t()};
         camera
-            .setType(Camera::Type::eFirstPerson)
-            .setRotationSpeed(0.2f)
-            .setMovementSpeed(1.0f);
+            ->setType(Camera_t::Type::eFirstPerson)
+            ->setRotationSpeed(0.2f)
+            ->setMovementSpeed(1.0f)
+            ->createCameraUBOs(device, physicalDevice, count);
 
         this->cameras.push_back(camera);
+        this->cameraIndex = 0;
     }
 
     void Scene_t::loadSamplers()
@@ -408,7 +410,6 @@ namespace vlb {
             }
 
             loadSamplers();
-            loadCameras();
             //TODO: loadAnimations();
             //TODO: loadSkins();
 
@@ -424,20 +425,38 @@ namespace vlb {
         }
     }
 
-    void Scene_t::createUBOsForCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count)
-    {
-        for (auto& camera : cameras)
-        {
-            camera.createCameraUBOs(device, physicalDevice, count);
-        }
-    }
-
     void Scene_t::setViewingFrustumForCameras(ViewingFrustum frustum)
     {
         for (auto& camera : cameras)
         {
-            camera.setViewingFrustum(frustum);
+            camera->setViewingFrustum(frustum);
         }
+    }
+
+    Camera Scene_t::getCamera(int index)
+    {
+        return this->cameras[index == -1 ? this->cameraIndex : index];
+    }
+
+    void Scene_t::setCameraIndex(int cameraIndex)
+    {
+        this->cameraIndex = cameraIndex;
+    }
+
+    const int Scene_t::getCameraIndex()
+    {
+        return this->cameraIndex;
+    }
+
+    void Scene_t::pushCamera(Camera camera)
+    {
+        // TODO: change index here
+        this->cameras.push_back(camera);
+    }
+
+    const size_t Scene_t::getCamerasCount()
+    {
+        return this->cameras.size();
     }
 
     void Scene_t::createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool)
@@ -637,20 +656,56 @@ namespace vlb {
         loadMaterials(); // TODO: call this function somewhere else
     }
 
+    void SceneManager::pushScene(Scene_t::CreateInfo ci)
+    {
+        Scene scene{new Scene_t(ci.path)};
+        scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
+        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
+        scene->setViewingFrustumForCameras(this->frustum);
+        scene->setCameraIndex(ci.cameraIndex);
+
+        scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+
+        for (auto& cameraInfo : ci.cameras)
+        {
+            Camera camera{new Camera_t()};
+            camera
+                ->setType(Camera_t::Type::eFirstPerson)
+                ->setRotationSpeed(cameraInfo.rotationSpeed)
+                ->setMovementSpeed(cameraInfo.movementSpeed)
+                ->setYaw(cameraInfo.yaw)
+                ->setPitch(cameraInfo.pitch)
+                ->setPosition(cameraInfo.position)
+                ->createCameraUBOs(this->device, this->physicalDevice, this->swapchainImagesCount);
+
+            scene->pushCamera(camera);
+        }
+
+        scene->path = ci.path;
+
+        this->scenes.push_back(scene);
+        this->sceneNames.push_back(ci.name);
+
+        this->sceneChangedFlag = false;
+    }
+
     void SceneManager::pushScene(std::string& fileName)
     {
         Scene scene{new Scene_t(fileName)};
         // should call this functions from other file (im not sure yet)
         scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
         scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
-        scene->createUBOsForCameras(this->device, this->physicalDevice, this->swapchainImagesCount);
+        scene->setViewingFrustumForCameras(this->frustum);
         //
+        scene->loadCameras(this->device, this->physicalDevice, this->swapchainImagesCount);
         scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+
+        scene->path = fileName;
 
         this->scenes.push_back(scene);
         this->sceneNames.push_back(scene->name); // TODO: string views
-        this->sceneIndex = getScenesCount() - 1;
 
+        this->sceneIndex = getScenesCount() - 1;
         this->sceneChangedFlag = true;
     }
 
@@ -675,38 +730,14 @@ namespace vlb {
         this->commandPool.graphics = info.graphicsCommandPool;
         this->swapchainImagesCount = info.swapchainImagesCount;
 
-        auto scenePaths = info.scenePaths;
-
-        if (!scenePaths.size())
-        {
-            std::string fileName{VLB_DEFAULT_SCENE_NAME};
-            pushScene(fileName);
-        }
-        else
-        {
-            try
-            {
-                auto sceneIndex = this->sceneIndex;
-                for (auto& filePath : scenePaths)
-                {
-                    pushScene(filePath);
-                }
-                this->sceneIndex = sceneIndex;
-            }
-            catch(std::runtime_error& e)
-            {
-                std::cerr << e.what() << "\n";
-            }
-        }
-
         this->sceneChangedFlag = false;
-
+        this->sceneIndex = 0;
         this->frustum = std::make_shared<ViewingFrustum_t>();
     }
 
-    Scene& SceneManager::getScene()
+    Scene& SceneManager::getScene(int index)
     {
-        return this->scenes[this->sceneIndex];
+        return this->scenes[index == -1 ? this->sceneIndex : index];
     }
 
     const int SceneManager::getSceneIndex()
@@ -722,6 +753,11 @@ namespace vlb {
     const size_t SceneManager::getScenesCount()
     {
         return this->scenes.size();
+    }
+
+    Camera SceneManager::getCamera()
+    {
+        return getScene()->getCamera();
     }
 
     SceneManager& SceneManager::setSceneIndex(int sceneIndex)

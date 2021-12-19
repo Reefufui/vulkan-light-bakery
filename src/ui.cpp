@@ -2,6 +2,7 @@
 
 #include "ui.hpp"
 
+#include <imgui_stdlib.h>
 #include <nlohmann/json.hpp>
 
 #include <iostream>
@@ -22,6 +23,21 @@ namespace ImGui {
         if (values.empty()) { return false; }
         return Combo(label, currIndex, vector_getter,
                 static_cast<void*>(&values), values.size(), size);
+    }
+}
+
+namespace glm
+{
+    void from_json(const nlohmann::json& j, vec3& vec)
+    {
+        j.at("x").get_to(vec.x);
+        j.at("y").get_to(vec.y);
+        j.at("z").get_to(vec.z);
+    }
+
+    void to_json(nlohmann::json& j, const vec3& vec)
+    {
+        j = nlohmann::json{{"x", vec.x}, {"y", vec.y}, {"z", vec.z}};
     }
 }
 
@@ -273,11 +289,6 @@ namespace vlb {
         this->fileDialog.SetTypeFilters({ ".gltf", ".glb", ".*" });
 
         deserialize();
-
-        if (this->scenePaths.size() == 0)
-        {
-            this->scenePaths.push_back(VLB_DEFAULT_SCENE_NAME);
-        }
     }
 
     float& UI::getLightIntensity()
@@ -285,43 +296,56 @@ namespace vlb {
         return this->lightIntensity;
     }
 
-    const std::vector<std::string>& UI::getScenePaths()
-    {
-        return this->scenePaths;
-    }
-
     void UI::camera()
     {
         ImGui::Text("Camera Settings");
 
-        /*
-        auto ms = this->pCamera->getMovementSpeed();
+        auto camera = this->pSceneManager->getCamera();
+
+        auto ms = camera->getMovementSpeed();
         ImGui::SliderFloat("Movement speed", &ms, 0.0f, 50.0f);
-        this->pCamera->setMovementSpeed(ms);
+        camera->setMovementSpeed(ms);
 
-        auto rs = this->pCamera->getRotationSpeed();
+        auto rs = camera->getRotationSpeed();
         ImGui::SliderFloat("Mouse sensitivity", &rs, 0.0f, 1.0f);
-        this->pCamera->setRotationSpeed(rs);
+        camera->setRotationSpeed(rs);
 
-            if (ImGui::Button("Reset"))
-            {
-                this->pCamera->reset();
-            }
-            */
+        if (ImGui::Button("Reset"))
+        {
+            camera->reset();
+        }
+
+
+        const auto& scene = this->pSceneManager->getScene();
+        int cameraIndex = scene->getCameraIndex();
+        ImGui::SliderInt("Camera index", &cameraIndex, 0, scene->getCamerasCount() - 1);
+        this->pSceneManager->getScene()->setCameraIndex(cameraIndex);
     }
 
     void UI::sceneManager()
     {
         ImGui::Text("Choose model to render:");
 
+        const auto& sceneNames = this->pSceneManager->getSceneNames();
         int sceneIndex = this->pSceneManager->getSceneIndex();
-        ImGui::Combo("", &sceneIndex, this->pSceneManager->getSceneNames(), 20);
+        if (ImGui::BeginCombo("##combo", sceneNames[sceneIndex].c_str()))
+        {
+            for (int n = 0; n < sceneNames.size(); ++n)
+            {
+                bool is_selected = sceneIndex == n;
+                if (ImGui::Selectable(sceneNames[n].c_str(), is_selected))
+                    sceneIndex = n;
+            }
+            ImGui::EndCombo();
+        }
         this->pSceneManager->setSceneIndex(sceneIndex);
+
+        const auto squareButtonSize = ImVec2{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
 
         {
             ImGui::SameLine();
 
-            if (ImGui::Button("+", {26, 26}))
+            if (ImGui::Button("+", squareButtonSize))
             {
                 this->fileDialog.Open();
             }
@@ -332,7 +356,6 @@ namespace vlb {
                 {
                     auto path = this->fileDialog.GetSelected().string();
                     this->pSceneManager->pushScene(path);
-                    this->scenePaths.push_back(path);
                 }
                 catch(std::runtime_error& e)
                 {
@@ -345,9 +368,8 @@ namespace vlb {
         if (this->pSceneManager->getScenesCount() > 1)
         {
             ImGui::SameLine();
-            if (ImGui::Button("-", {26, 26}))
+            if (ImGui::Button("-", squareButtonSize))
             {
-                this->scenePaths.erase(this->scenePaths.begin() + sceneIndex);
                 this->pSceneManager->popScene();
             }
         }
@@ -359,13 +381,27 @@ namespace vlb {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        bool openpopuptemp = false;
+
         ImGui::Begin("Vulkan Light Bakery");
         {
-            sceneManager();
-            camera();
-
-            ImGui::Text("Other Settings");
-            ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
+            ImGui::BeginTabBar("a");
+            if (ImGui::BeginTabItem("Scene"))
+            {
+                sceneManager();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Camera"))
+            {
+                camera();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Light"))
+            {
+                ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
         }
         ImGui::End();
 
@@ -402,14 +438,47 @@ namespace vlb {
         {
             nlohmann::json json{};
             file >> json;
+
             this->lightIntensity = json["lightIntensity"].get<float>();
             this->pSceneManager->setSceneIndex(json["selectedSceneIndex"].get<int>());
-            /*
-            this->pCamera->setMovementSpeed(json["movementSpeed"].get<float>());
-            this->pCamera->setRotationSpeed(json["mouse sensitivity"].get<float>());
-            */
-            this->scenePaths = json["scenePaths"].get<std::vector<std::string>>();
             this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
+
+            for (const auto& jsonScene : json["scenes"])
+            {
+                Scene_t::CreateInfo ci{};
+                ci.name = jsonScene["name"].get<std::string>();
+                ci.path = jsonScene["path"].get<std::string>();
+                ci.cameraIndex = jsonScene["cameraIndex"].get<int>();
+
+                for (const auto& jsonCamera : jsonScene["cameras"])
+                {
+                    Scene_t::CreateInfo::CameraInfo cameraCI{};
+                    cameraCI.movementSpeed = jsonCamera["movementSpeed"].get<float>();
+                    cameraCI.rotationSpeed = jsonCamera["mouse sensitivity"].get<float>();
+                    cameraCI.position      = jsonCamera["position"].get<glm::vec3>();
+                    cameraCI.yaw           = jsonCamera["yaw"].get<float>();
+                    cameraCI.pitch         = jsonCamera["pitch"].get<float>();
+
+                    ci.cameras.push_back(cameraCI);
+                }
+
+                try
+                {
+                    auto tmp = this->pSceneManager->getSceneIndex();
+                    this->pSceneManager->pushScene(ci);
+                    this->pSceneManager->setSceneIndex(tmp);
+                }
+                catch(std::exception& error)
+                {
+                    std::cerr << error.what() << "\n";
+                }
+            }
+        }
+        else
+        {
+            std::string fileName{VLB_DEFAULT_SCENE_NAME};
+            this->pSceneManager->pushScene(fileName);
+            this->pSceneManager->setSceneIndex(0);
         }
     }
 
@@ -420,12 +489,33 @@ namespace vlb {
         nlohmann::json json{};
         json["lightIntensity"] = this->lightIntensity;
         json["selectedSceneIndex"] = this->pSceneManager->getSceneIndex();
-        json["scenePaths"] = this->scenePaths;
         json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
-        /*
-        json["movementSpeed"] = this->pCamera->getMovementSpeed();
-        json["mouse sensitivity"] = this->pCamera->getRotationSpeed();
-        */
+
+        json["scenes"] = nlohmann::json::array();
+        for (int i{}; i < this->pSceneManager->getScenesCount(); ++i)
+        {
+            auto& scene = this->pSceneManager->getScene(i);
+            auto jsonScene = nlohmann::json::object();
+
+            jsonScene["path"] = scene->path;
+            jsonScene["name"] = scene->name;
+            jsonScene["cameras"] = nlohmann::json::array();
+            jsonScene["cameraIndex"] = scene->getCameraIndex();
+
+            for (int j{}; j < scene->getCamerasCount(); ++j)
+            {
+                auto camera = scene->getCamera(j);
+                auto jsonCamera = nlohmann::json::object();
+                jsonCamera["movementSpeed"]     = camera->getMovementSpeed();
+                jsonCamera["mouse sensitivity"] = camera->getRotationSpeed();
+                jsonCamera["position"]          = camera->getPosition();
+                jsonCamera["yaw"]               = camera->getYaw();
+                jsonCamera["pitch"]             = camera->getPitch();
+                jsonScene["cameras"].push_back(jsonCamera);
+            }
+
+            json["scenes"].push_back(jsonScene);
+        }
         file << std::setw(4) << json << std::endl;
     }
 
