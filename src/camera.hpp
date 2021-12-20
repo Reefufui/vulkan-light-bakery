@@ -15,7 +15,7 @@ namespace vlb {
 
     struct ViewingFrustum_t;
     typedef std::shared_ptr<ViewingFrustum_t> ViewingFrustum;
-    struct ViewingFrustum_t
+    struct ViewingFrustum_t : public std::enable_shared_from_this<ViewingFrustum_t>
     {
         float aspect;
         float yfov;
@@ -25,14 +25,14 @@ namespace vlb {
         bool  flipY;
 
         ViewingFrustum_t()
-            : aspect(1.0f), yfov(60.f), zfar(10000.f), znear(0.001f)
+            : aspect(1.0f), yfov(60.f), zfar(10000.f), znear(0.001f), flipY(false)
         {
         }
 
-        ViewingFrustum_t& setAspect(float aspect)
+        ViewingFrustum setAspect(float aspect)
         {
             this->aspect = aspect;
-            return *this;
+            return shared_from_this();
         }
     };
 

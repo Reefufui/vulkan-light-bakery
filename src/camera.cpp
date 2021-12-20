@@ -108,7 +108,7 @@ namespace vlb {
         if (!io.WantCaptureMouse)
         {
             auto[dx, dy] = ImGui::IsAnyMouseDown() ? io.MouseDelta : ImVec2(0.0f, 0.0f);
-            auto newPitch = this->pitch - dy * speed.rotation;
+            auto newPitch = this->pitch + dy * speed.rotation;
             this->pitch = (newPitch > -90.0f && newPitch < 90.0f) ? newPitch : this->pitch;
             this->yaw   -= dx * speed.rotation;
             this->yaw   = static_cast<float>(static_cast<int>(this->yaw) % 360);
@@ -117,7 +117,7 @@ namespace vlb {
         if (type == Type::eFirstPerson)
         {
 
-            this->forward.x = -glm::cos(glm::radians(this->pitch)) * glm::sin(glm::radians(this->yaw));
+            this->forward.x = glm::cos(glm::radians(this->pitch)) * glm::sin(glm::radians(this->yaw));
             this->forward.y = glm::sin(glm::radians(this->pitch));
             this->forward.z = glm::cos(glm::radians(this->pitch)) * glm::cos(glm::radians(this->yaw));
             this->forward = glm::normalize(this->forward);
@@ -130,9 +130,9 @@ namespace vlb {
             if (!io.WantCaptureKeyboard)
             {
                 if (io.KeysDown['W'])
-                    this->position -= forward * length;
-                if (io.KeysDown['S'])
                     this->position += forward * length;
+                if (io.KeysDown['S'])
+                    this->position -= forward * length;
                 if (io.KeysDown['D'])
                     this->position += right * length;
                 if (io.KeysDown['A'])
@@ -141,6 +141,7 @@ namespace vlb {
         }
 
         updateViewMatrix();
+        updateProjMatrix();
 
         return shared_from_this();
     }
@@ -184,8 +185,6 @@ namespace vlb {
         ubo.view = this->matrix.view;
         ubo.projectionInv = glm::inverse(ubo.projection);
         ubo.viewInv = glm::inverse(ubo.view);
-
-        ubo.projectionInv = glm::mat4(1.0f); // TODO
 
         memcpy(this->mappedMemory[imageIndex], &ubo, sizeof(ubo));
     }

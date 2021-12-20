@@ -48,7 +48,6 @@ namespace vlb {
                 vk::UniqueSampler sampler;
             };
 
-            // TODO: redesign?
             struct Material
             {
                 struct Alpha
@@ -108,6 +107,7 @@ namespace vlb {
                 uint32_t indexOffset;
                 uint32_t indexCount;
                 uint32_t vertexCount;
+                Material material;
             };
 
             struct Mesh_t;
@@ -157,44 +157,55 @@ namespace vlb {
 
             Scene_t() = delete;
             Scene_t(std::string& filename);
+
+            // Labels
+            std::string name;
+            std::string path;
+
+            // load*(*); functions must be called in the same order as declared below
+            void loadSamplers();
+            void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void loadMaterials();
+            void loadNodes();
+            void loadCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count);
+
+            // create*(*); functions must be called after all needed functions were called
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
-            void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
-            void loadCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count);
-            void setViewingFrustumForCameras(ViewingFrustum frustum);
-            Camera getCamera(int index = -1);
-            void setCameraIndex(int cameraIndex);
-            const int getCameraIndex();
-            void pushCamera(Camera camera);
-            const size_t getCamerasCount();
 
+            // Camera management
+            void         setCameraIndex(int cameraIndex);
+            void         setViewingFrustumForCameras(ViewingFrustum frustum);
+            Camera       getCamera(int index = -1);
+            const int    getCameraIndex();
+            const size_t getCamerasCount();
+            void         pushCamera(Camera camera);
+
+            // Vulkan Buffers
             Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
             Application::Buffer indexBuffer;
+
+            // CPU Buffers
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
-            std::string name;
-            std::string path;
 
         private:
 
             tinygltf::Model    model;
             tinygltf::TinyGLTF loader;
 
+            std::vector<Sampler>  samplers;
+            std::vector<Texture>  textures;
+            std::vector<Material> materials;
             std::vector<Node>     nodes;
             std::vector<Node>     linearNodes;
-            std::vector<Sampler>  samplers;
-            std::vector<Material> materials;
             std::vector<Camera>   cameras;
-
-            std::vector<Texture>  textures;
 
             int cameraIndex;
 
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
-            void loadSamplers();
-            void loadMaterials();
     };
 
     class SceneManager
@@ -202,8 +213,7 @@ namespace vlb {
         private:
 
             vk::PhysicalDevice physicalDevice;
-            vk::Device device;
-
+            vk::Device         device;
             struct
             {
                 vk::Queue transfer;
@@ -214,18 +224,18 @@ namespace vlb {
                 vk::CommandPool transfer;
                 vk::CommandPool graphics;
             } commandPool;
-
             uint32_t       swapchainImagesCount;
+
             ViewingFrustum frustum;
 
             bool sceneShouldBeFreed;
             bool sceneChangedFlag;
             int  sceneIndex;
-
             std::vector<Scene      > scenes;
             std::vector<std::string> sceneNames;
 
         public:
+
             struct InitInfo
             {
                 vk::PhysicalDevice physicalDevice;
@@ -237,21 +247,22 @@ namespace vlb {
                 uint32_t swapchainImagesCount;
             };
 
-            SceneManager();
-            ~SceneManager();
+            void                      init(InitInfo& info);
 
-            void         init(InitInfo& info);
-            Scene&       getScene(int index = -1);
-            const int    getSceneIndex();
-            const size_t getScenesCount();
-            const bool   sceneChanged();
+            Scene&                    getScene(int index = -1);
+            const int                 getSceneIndex();
+            const size_t              getScenesCount();
             std::vector<std::string>& getSceneNames();
-            Camera       getCamera();
+            Camera                    getCamera();
+            ViewingFrustum            getViewingFrustum();
+
+            const bool                sceneChanged();
 
             SceneManager& setSceneIndex(int sceneIndex);
+            SceneManager& setViewingFrustum(ViewingFrustum frustum);
 
-            void pushScene(std::string& fileName);
-            void pushScene(Scene_t::CreateInfo ci);
+            void pushScene(std::string& fileName);  // hot push on run-time
+            void pushScene(Scene_t::CreateInfo ci); // load scene using deserialized ci
             void popScene();
     };
 

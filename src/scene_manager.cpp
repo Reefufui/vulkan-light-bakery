@@ -13,6 +13,46 @@
 
 namespace vlb {
 
+    Scene_t::Scene_t(std::string& filename)
+    {
+        std::string err;
+        std::string warn;
+
+        std::filesystem::path filePath = filename;
+        this->path = filename;
+        this->name  = filePath.stem();
+
+        bool loaded{false};
+        if (filePath.extension() == ".gltf")
+        {
+            loaded = loader.LoadASCIIFromFile(&this->model, &err, &warn, filename);
+        }
+        else if (filePath.extension() == ".glb")
+        {
+            loaded = loader.LoadBinaryFromFile(&this->model, &err, &warn, filename);
+        }
+        else
+        {
+            throw std::runtime_error("Not supported file format");
+        }
+
+        if (!warn.empty())
+        {
+            printf("Warn: %s", warn.c_str());
+        }
+
+        if (!err.empty())
+        {
+            printf("Err: %s", err.c_str());
+        }
+
+        if (!loaded)
+        {
+            throw std::runtime_error("Failed to parse glTF");
+        }
+
+    }
+
     glm::mat4 Scene_t::Node_t::localMatrix()
     {
         return glm::translate(glm::mat4(1.0f), this->translation) * glm::mat4(this->rotation) * glm::scale(glm::mat4(1.0f), this->scale) * this->matrix;
@@ -151,7 +191,8 @@ namespace vlb {
                     }
                 }
 
-                Primitive newPrimitive{new Primitive_t(indexStart, indexCount, vertexCount)};
+                Material material = primitive.material > -1 ? this->materials[primitive.material] : this->materials.back();
+                Primitive newPrimitive{new Primitive_t(indexStart, indexCount, vertexCount, material)};
                 newMesh->primitives.push_back(newPrimitive);
             }
 
@@ -367,61 +408,14 @@ namespace vlb {
         materials.push_back(Material());
     }
 
-    Scene_t::Scene_t(std::string& filename)
+    void Scene_t::loadNodes()
     {
-        std::string err;
-        std::string warn;
+        const auto& scene = this->model.scenes[0];
 
-        std::filesystem::path filePath = filename;
-
-        bool loaded{false};
-        if (filePath.extension() == ".gltf")
+        for (const auto& nodeIndex : scene.nodes)
         {
-            loaded = loader.LoadASCIIFromFile(&this->model, &err, &warn, filename);
-        }
-        else if (filePath.extension() == ".glb")
-        {
-            loaded = loader.LoadBinaryFromFile(&this->model, &err, &warn, filename);
-        }
-        else
-        {
-            throw std::runtime_error("Not supported file format");
-        }
-
-        if (!warn.empty())
-        {
-            printf("Warn: %s", warn.c_str());
-        }
-
-        if (!err.empty())
-        {
-            printf("Err: %s", err.c_str());
-        }
-
-        if (loaded)
-        {
-            this->name = filePath.stem();
-
-            const auto& scene = this->model.scenes[0];
-            for (const auto& nodeIndex : scene.nodes)
-            {
-                const auto& node = this->model.nodes[nodeIndex];
-                loadNode(nullptr, node, nodeIndex);
-            }
-
-            loadSamplers();
-            //TODO: loadAnimations();
-            //TODO: loadSkins();
-
-            for (auto& node : linearNodes)
-            {
-                // TODO Assign skins
-                // TODO Set Initial pose
-            }
-        }
-        else
-        {
-            throw std::runtime_error("Failed to parse glTF");
+            const auto& node = this->model.nodes[nodeIndex];
+            loadNode(nullptr, node, nodeIndex);
         }
     }
 
@@ -652,20 +646,19 @@ namespace vlb {
 
             this->textures.push_back(texture);
         }
-
-        loadMaterials(); // TODO: call this function somewhere else
     }
 
     void SceneManager::pushScene(Scene_t::CreateInfo ci)
     {
         Scene scene{new Scene_t(ci.path)};
-        scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
-        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
-        scene->setViewingFrustumForCameras(this->frustum);
-        scene->setCameraIndex(ci.cameraIndex);
 
+        scene->loadSamplers();
         scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+        scene->loadMaterials();
+        scene->loadNodes();
 
+        // Instead of calling loadCameras() to fetch cameras from glTF file we load cameras from ci.
+        assert(ci.cameras.size());
         for (auto& cameraInfo : ci.cameras)
         {
             Camera camera{new Camera_t()};
@@ -680,8 +673,11 @@ namespace vlb {
 
             scene->pushCamera(camera);
         }
+        scene->setCameraIndex(ci.cameraIndex);
+        scene->setViewingFrustumForCameras(this->frustum);
 
-        scene->path = ci.path;
+        scene->createBLASBuffers(     this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
+        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
 
         this->scenes.push_back(scene);
         this->sceneNames.push_back(ci.name);
@@ -692,18 +688,20 @@ namespace vlb {
     void SceneManager::pushScene(std::string& fileName)
     {
         Scene scene{new Scene_t(fileName)};
-        // should call this functions from other file (im not sure yet)
+
+        scene->loadSamplers();
+        scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+        scene->loadMaterials();
+        scene->loadNodes();
+        scene->loadCameras(this->device, this->physicalDevice, this->swapchainImagesCount);
+        scene->setCameraIndex(0);
+        scene->setViewingFrustumForCameras(this->frustum);
+
         scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
         scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
-        scene->setViewingFrustumForCameras(this->frustum);
-        //
-        scene->loadCameras(this->device, this->physicalDevice, this->swapchainImagesCount);
-        scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
-
-        scene->path = fileName;
 
         this->scenes.push_back(scene);
-        this->sceneNames.push_back(scene->name); // TODO: string views
+        this->sceneNames.push_back(scene->name);
 
         this->sceneIndex = getScenesCount() - 1;
         this->sceneChangedFlag = true;
@@ -716,7 +714,6 @@ namespace vlb {
         this->sceneNames.erase(this->sceneNames.begin() + this->sceneIndex);
 
         this->sceneIndex = std::max(0, this->sceneIndex - 1);
-
         this->sceneChangedFlag = true;
     }
 
@@ -774,20 +771,27 @@ namespace vlb {
         return *this;
     }
 
+    ViewingFrustum SceneManager::getViewingFrustum()
+    {
+        return this->frustum;
+    }
+
+    SceneManager& SceneManager::setViewingFrustum(ViewingFrustum frustum)
+    {
+        this->frustum = frustum;
+        for (auto& scene : this->scenes)
+        {
+            scene->setViewingFrustumForCameras(frustum);
+        }
+
+        return *this;
+    }
+
     const bool SceneManager::sceneChanged()
     {
         bool sceneChanged = false;
         std::swap(sceneChanged, this->sceneChangedFlag);
         return sceneChanged;
     }
-
-    SceneManager::SceneManager()
-    {
-    }
-
-    SceneManager::~SceneManager()
-    {
-    }
-
 }
 

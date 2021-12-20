@@ -224,6 +224,9 @@ namespace vlb {
 
         initSceneManager();
         initUI();
+
+        auto aspect = static_cast<float>(this->surfaceExtent.width) / static_cast<float>(this->surfaceExtent.height);
+        this->sceneManager.setViewingFrustum(std::make_shared<ViewingFrustum_t>()->setAspect(aspect));
     }
 
     Renderer::~Renderer()
