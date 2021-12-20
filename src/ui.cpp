@@ -464,9 +464,7 @@ namespace vlb {
 
                 try
                 {
-                    auto tmp = this->pSceneManager->getSceneIndex();
                     this->pSceneManager->pushScene(ci);
-                    this->pSceneManager->setSceneIndex(tmp);
                 }
                 catch(std::exception& error)
                 {
