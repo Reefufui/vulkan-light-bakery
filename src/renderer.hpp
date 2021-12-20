@@ -6,7 +6,6 @@
 #include "application.hpp"
 #include "scene_manager.hpp"
 #include "ui.hpp"
-#include "camera.hpp"
 
 namespace vlb {
 
@@ -34,7 +33,6 @@ namespace vlb {
             const int maxFramesInFlight = 2;
             void initUI();
             void initSceneManager();
-            void initCamera();
 
         protected:
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
@@ -56,7 +54,6 @@ namespace vlb {
 
             SceneManager sceneManager;
             UI ui;
-            Camera camera;
 
         public:
 

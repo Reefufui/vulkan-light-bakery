@@ -5,6 +5,7 @@
 
 #include "application.hpp"
 #include "scene_manager.hpp"
+#include "camera.hpp"
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -39,13 +40,12 @@ namespace vlb {
 
             vlb::SceneManager* pSceneManager;
             void sceneManager();
+            void camera();
 
-            std::vector<std::string> scenePaths{};
             float lightIntensity = 1.0f;
 
         public:
 
-            const std::vector<std::string>& getScenePaths();
             float& getLightIntensity();
 
             struct InterfaceInitInfo

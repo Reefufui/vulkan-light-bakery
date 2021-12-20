@@ -159,9 +159,9 @@ namespace vlb {
     {
         auto commandBuffer = Application::recordGraphicsCommandBuffer();
         std::vector<vk::ImageView> swapchainImageViews2{};
-        for (auto& siv : this->swapchainImageViews)
+        for (auto& sciv : this->swapchainImageViews)
         {
-            swapchainImageViews2.push_back(siv.get());
+            swapchainImageViews2.push_back(sciv.get());
         }
 
         auto uiInitInfo = UI::InterfaceInitInfo
@@ -192,22 +192,9 @@ namespace vlb {
                 this->commandPool.transfer.get(),
                 this->queue.graphics,
                 this->commandPool.graphics.get(),
-                this->ui.getScenePaths()
+                static_cast<uint32_t>(this->swapchainImageViews.size())
         };
         this->sceneManager.init(sceneManagerInitInfo);
-    }
-
-    void Renderer::initCamera()
-    {
-        auto[width, height, depth] = this->surfaceExtent;
-        this->camera
-            .setViewingFrustum(Camera::ViewingFrustum{}
-                    .setAspect(static_cast<float>(width) / static_cast<float>(height))
-                    )
-            .setType(Camera::Type::eFirstPerson)
-            .setRotationSpeed(0.25f)
-            .setMovementSpeed(1.0f)
-            .createCameraUBOs(this->device.get(), this->physicalDevice, this->swapChainImages.size());
     }
 
     void Renderer::render()
@@ -235,9 +222,8 @@ namespace vlb {
         createDrawCommandBuffers();
         createSyncObjects();
 
-        initUI();
         initSceneManager();
-        initCamera();
+        initUI();
     }
 
     Renderer::~Renderer()

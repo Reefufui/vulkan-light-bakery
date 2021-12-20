@@ -3,12 +3,15 @@
 #ifndef SCENE_MANAGER_HPP
 #define SCENE_MANAGER_HPP
 
+#define VLB_DEFAULT_SCENE_NAME "default_blender_cube.gltf"
+
 #include <tiny_gltf.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include "application.hpp"
+#include "camera.hpp"
 
 namespace vlb {
 
@@ -130,6 +133,26 @@ namespace vlb {
                 glm::vec3 scale;
                 glm::mat4 rotation;
                 glm::mat4 matrix;
+
+                glm::mat4 localMatrix();
+                glm::mat4 getMatrix();
+                void update();
+            };
+
+            struct CreateInfo
+            {
+                struct CameraInfo
+                {
+                    float rotationSpeed;
+                    float movementSpeed;
+                    glm::vec3 position;
+                    float yaw;
+                    float pitch;
+                };
+                std::vector<CameraInfo> cameras;
+                int cameraIndex;
+                std::string name;
+                std::string path;
             };
 
             Scene_t() = delete;
@@ -137,6 +160,13 @@ namespace vlb {
             void createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
             void loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool);
+            void loadCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count);
+            void setViewingFrustumForCameras(ViewingFrustum frustum);
+            Camera getCamera(int index = -1);
+            void setCameraIndex(int cameraIndex);
+            const int getCameraIndex();
+            void pushCamera(Camera camera);
+            const size_t getCamerasCount();
 
             Application::Buffer objDescBuffer;
             Application::Buffer vertexBuffer;
@@ -144,17 +174,22 @@ namespace vlb {
             std::vector<uint32_t> indices;
             std::vector<Vertex> vertices;
             std::string name;
+            std::string path;
 
         private:
 
-            tinygltf::Model model;
+            tinygltf::Model    model;
             tinygltf::TinyGLTF loader;
 
-            std::vector<Node> nodes;
-            std::vector<Node> linearNodes;
-            std::vector<Sampler> samplers;
-            std::vector<Texture> textures;
+            std::vector<Node>     nodes;
+            std::vector<Node>     linearNodes;
+            std::vector<Sampler>  samplers;
             std::vector<Material> materials;
+            std::vector<Camera>   cameras;
+
+            std::vector<Texture>  textures;
+
+            int cameraIndex;
 
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
             void loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex);
@@ -180,6 +215,9 @@ namespace vlb {
                 vk::CommandPool graphics;
             } commandPool;
 
+            uint32_t       swapchainImagesCount;
+            ViewingFrustum frustum;
+
             bool sceneShouldBeFreed;
             bool sceneChangedFlag;
             int  sceneIndex;
@@ -196,22 +234,24 @@ namespace vlb {
                 vk::CommandPool transferCommandPool;
                 vk::Queue graphicsQueue;
                 vk::CommandPool graphicsCommandPool;
-                std::vector<std::string> scenePaths;
+                uint32_t swapchainImagesCount;
             };
 
             SceneManager();
             ~SceneManager();
 
             void         init(InitInfo& info);
-            Scene&       getScene();
+            Scene&       getScene(int index = -1);
             const int    getSceneIndex();
             const size_t getScenesCount();
             const bool   sceneChanged();
             std::vector<std::string>& getSceneNames();
+            Camera       getCamera();
 
             SceneManager& setSceneIndex(int sceneIndex);
 
             void pushScene(std::string& fileName);
+            void pushScene(Scene_t::CreateInfo ci);
             void popScene();
     };
 

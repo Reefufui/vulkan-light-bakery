@@ -10,34 +10,37 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "application.hpp"
-#include "ui.hpp"
 
 namespace vlb {
 
-    class Camera
+    struct ViewingFrustum_t;
+    typedef std::shared_ptr<ViewingFrustum_t> ViewingFrustum;
+    struct ViewingFrustum_t
+    {
+        float aspect;
+        float yfov;
+        float zfar;
+        float znear;
+
+        bool  flipY;
+
+        ViewingFrustum_t()
+            : aspect(1.0f), yfov(60.f), zfar(10000.f), znear(0.001f)
+        {
+        }
+
+        ViewingFrustum_t& setAspect(float aspect)
+        {
+            this->aspect = aspect;
+            return *this;
+        }
+    };
+
+    struct Camera_t;
+    typedef std::shared_ptr<Camera_t> Camera;
+    struct Camera_t : public std::enable_shared_from_this<Camera_t>
     {
         public:
-            struct ViewingFrustum
-            {
-                float aspect;
-                float yfov;
-                float zfar;
-                float znear;
-
-                bool  flipY;
-
-                ViewingFrustum()
-                    : aspect(1.0f), yfov(45.f), zfar(10000.f), znear(0.001f)
-                {
-                }
-
-                ViewingFrustum& setAspect(float aspect)
-                {
-                    this->aspect = aspect;
-                    return *this;
-                }
-            };
-
             enum class Type
             {
                 eArcBall,
@@ -45,18 +48,28 @@ namespace vlb {
                 eTypeCount
             };
 
-            Camera& setViewingFrustum(Camera::ViewingFrustum frustum);
-            Camera& setType(Camera::Type type);
-            Camera& setRotationSpeed(float rotationSpeed);
-            Camera& setMovementSpeed(float movementSpeed);
-            Camera& createCameraUBOs(vk::Device device, vk::PhysicalDevice physicalDevice, uint32_t count);
+            Camera setViewingFrustum(ViewingFrustum frustum);
+            Camera setType(Camera_t::Type type);
+            Camera setRotationSpeed(float rotationSpeed);
+            Camera setMovementSpeed(float movementSpeed);
+            Camera setPosition(glm::vec3 position);
+            Camera setPitch(float pitch);
+            Camera setYaw(float yaw);
+            Camera createCameraUBOs(vk::Device device, vk::PhysicalDevice physicalDevice, uint32_t count);
+
+            const float getRotationSpeed();
+            const float getMovementSpeed();
+            const glm::vec3 getPosition();
+            const float getPitch();
+            const float getYaw();
+
 
             vk::DescriptorSetLayout& getDescriptorSetLayout();
-            Camera& update();
+            Camera update();
+            Camera reset();
             vk::DescriptorSet getDescriptorSet(uint32_t imageIndex);
 
-
-            Camera(){};
+            Camera_t(){};
 
         private:
 
@@ -91,7 +104,7 @@ namespace vlb {
 
             struct
             {
-                float rotation = 1.0f;
+                float rotation = 0.25f;
                 float movement = 1.0f;
             } speed;
 
