@@ -6,161 +6,6 @@
 
 namespace vlb {
 
-    void Raytracer::createBLAS()
-    {
-        const auto& scene = this->sceneManager.getScene();
-
-        vk::AccelerationStructureGeometryTrianglesDataKHR triangleData{};
-        triangleData
-            .setVertexFormat(vk::Format::eR32G32B32Sfloat)
-            .setVertexStride(sizeof(Scene_t::Vertex))
-            .setMaxVertex(scene->vertices.size())
-            .setIndexType(vk::IndexType::eUint32)
-            .setVertexData(scene->vertexBuffer.deviceAddress)
-            .setIndexData(scene->indexBuffer.deviceAddress);
-
-        vk::AccelerationStructureGeometryKHR geometry{};
-        geometry
-            .setGeometryType(vk::GeometryTypeKHR::eTriangles)
-            .setGeometry({triangleData})
-            .setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-        vk::AccelerationStructureBuildGeometryInfoKHR buildGeometryInfo{};
-        buildGeometryInfo
-            .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-            .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-            .setGeometries(geometry);
-
-        const uint32_t primitiveCount = static_cast<uint32_t>(scene->indices.size()) / 3;
-        auto buildSizesInfo = this->device.get().getAccelerationStructureBuildSizesKHR(
-            vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
-
-        vk::MemoryPropertyFlags memoryProperty{ vk::MemoryPropertyFlagBits::eHostVisible
-            | vk::MemoryPropertyFlagBits::eHostCoherent };
-        vk::BufferUsageFlags bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
-            | vk::BufferUsageFlagBits::eShaderDeviceAddress };
-
-        this->blas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
-
-        this->blas.handle = this->device.get().createAccelerationStructureKHRUnique(
-                vk::AccelerationStructureCreateInfoKHR{}
-                .setBuffer(this->blas.buffer.handle.get())
-                .setSize(buildSizesInfo.accelerationStructureSize)
-                .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-                );
-
-        bufferUsage = { vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress };
-        memoryProperty = { vk::MemoryPropertyFlagBits::eDeviceLocal };
-        Buffer scratchBuffer = Application::createBuffer(buildSizesInfo.buildScratchSize, bufferUsage, memoryProperty);
-
-        vk::AccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{};
-        accelerationBuildGeometryInfo
-            .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-            .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-            .setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-            .setDstAccelerationStructure(this->blas.handle.get())
-            .setGeometries(geometry)
-            .setScratchData(scratchBuffer.deviceAddress);
-
-        vk::AccelerationStructureBuildRangeInfoKHR accelerationStructureBuildRangeInfo{};
-        accelerationStructureBuildRangeInfo
-            .setPrimitiveCount(primitiveCount)
-            .setPrimitiveOffset(0)
-            .setFirstVertex(0)
-            .setTransformOffset(0);
-
-        auto commandBuffer = Application::recordComputeCommandBuffer();
-        commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
-        flushComputeCommandBuffer(commandBuffer);
-
-        this->blas.buffer.deviceAddress = this->device.get().getAccelerationStructureAddressKHR({ this->blas.handle.get() });
-    }
-
-    void Raytracer::createTLAS()
-    {
-        VkTransformMatrixKHR transformMatrix = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f };
-
-        vk::AccelerationStructureInstanceKHR accelerationStructureInstance{};
-        accelerationStructureInstance
-            .setTransform(transformMatrix)
-            .setInstanceCustomIndex(0)
-            .setMask(0xFF)
-            .setInstanceShaderBindingTableRecordOffset(0)
-            .setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
-            .setAccelerationStructureReference(this->blas.buffer.deviceAddress);
-
-        Buffer instancesBuffer = createBuffer(
-                sizeof(vk::AccelerationStructureInstanceKHR),
-                vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
-                | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-                &accelerationStructureInstance);
-
-        vk::AccelerationStructureGeometryInstancesDataKHR instancesData{};
-        instancesData
-            .setArrayOfPointers(false)
-            .setData(instancesBuffer.deviceAddress);
-
-        vk::AccelerationStructureGeometryKHR geometry{};
-        geometry
-            .setGeometryType(vk::GeometryTypeKHR::eInstances)
-            .setGeometry({instancesData})
-            .setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-        vk::AccelerationStructureBuildGeometryInfoKHR buildGeometryInfo{};
-        buildGeometryInfo
-            .setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-            .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-            .setGeometries(geometry);
-
-        const uint32_t primitiveCount = 1;
-        auto buildSizesInfo = this->device.get().getAccelerationStructureBuildSizesKHR(
-                vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCount);
-
-        vk::BufferUsageFlags bufferUsage = { vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR
-            | vk::BufferUsageFlagBits::eShaderDeviceAddress };
-        vk::MemoryPropertyFlags memoryProperty{ vk::MemoryPropertyFlagBits::eHostVisible
-            | vk::MemoryPropertyFlagBits::eHostCoherent };
-
-        this->tlas.buffer = Application::createBuffer(buildSizesInfo.accelerationStructureSize, bufferUsage, memoryProperty);
-
-        this->tlas.handle = this->device.get().createAccelerationStructureKHRUnique(
-                vk::AccelerationStructureCreateInfoKHR{}
-                .setBuffer(this->tlas.buffer.handle.get())
-                .setSize(buildSizesInfo.accelerationStructureSize)
-                .setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-                );
-
-        bufferUsage = { vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress };
-        memoryProperty = { vk::MemoryPropertyFlagBits::eDeviceLocal };
-        Buffer scratchBuffer = Application::createBuffer(buildSizesInfo.buildScratchSize, bufferUsage, memoryProperty);
-
-        vk::AccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{};
-        accelerationBuildGeometryInfo
-            .setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-            .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-            .setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-            .setDstAccelerationStructure(this->tlas.handle.get())
-            .setGeometries(geometry)
-            .setScratchData(scratchBuffer.deviceAddress);
-
-        vk::AccelerationStructureBuildRangeInfoKHR accelerationStructureBuildRangeInfo{};
-        accelerationStructureBuildRangeInfo
-            .setPrimitiveCount(1)
-            .setPrimitiveOffset(0)
-            .setFirstVertex(0)
-            .setTransformOffset(0);
-
-        auto commandBuffer = Application::recordComputeCommandBuffer();
-        commandBuffer.buildAccelerationStructuresKHR(accelerationBuildGeometryInfo, &accelerationStructureBuildRangeInfo);
-        flushComputeCommandBuffer(commandBuffer);
-
-        this->tlas.buffer.deviceAddress = this->device.get().getAccelerationStructureAddressKHR({ this->tlas.handle.get() });
-    }
-
     void Raytracer::createStorageImage()
     {
         std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
@@ -387,8 +232,11 @@ namespace vlb {
     void Raytracer::updateSceneDescriptorSets()
     {
         vk::WriteDescriptorSetAccelerationStructureKHR tlasDescriptorInfo{};
+        /*
+         * TODO
         tlasDescriptorInfo
             .setAccelerationStructures(this->tlas.handle.get());
+            */
 
         vk::WriteDescriptorSet tlasWriteDS{};
         tlasWriteDS
@@ -597,19 +445,15 @@ namespace vlb {
     void Raytracer::handleSceneChange()
     {
         this->device.get().waitIdle();
-        createBLAS();
-        createTLAS();
         updateSceneDescriptorSets();
     }
 
     Raytracer::Raytracer()
     {
-        createBLAS();
-        createTLAS();
-        createStorageImage();
-        createRayTracingPipeline();
-        createShaderBindingTable();
-        createDescriptorSets();
+        //createStorageImage();
+        //createRayTracingPipeline();
+        //createShaderBindingTable();
+        //createDescriptorSets();
 
         this->drawCommandBuffers = Renderer::createDrawCommandBuffers();
     }
