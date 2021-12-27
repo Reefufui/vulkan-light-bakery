@@ -5,11 +5,16 @@
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
+#include <glm/gtx/string_cast.hpp> // Debug
 
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
 #include <utility>
+
+namespace shader {
+#include "structures.h"
+}
 
 namespace vlb {
 
@@ -52,14 +57,16 @@ namespace vlb {
         }
     }
 
-    Scene Scene_t::init(Scene_t::InitInfo& info)
+    Scene Scene_t::passVulkanResources(Scene_t::VulkanResources& info)
     {
         this->device               = info.device;
         this->physicalDevice       = info.physicalDevice;
-        this->queue.transfer       = info.transferQueue;
-        this->commandPool.transfer = info.transferCommandPool;
         this->queue.graphics       = info.graphicsQueue;
         this->commandPool.graphics = info.graphicsCommandPool;
+        this->queue.transfer       = info.transferQueue       ? info.transferQueue       : info.graphicsQueue;
+        this->commandPool.transfer = info.transferCommandPool ? info.transferCommandPool : info.graphicsCommandPool;
+        this->queue.compute        = info.computeQueue        ? info.computeQueue        : info.graphicsQueue;
+        this->commandPool.compute  = info.computeCommandPool  ? info.computeCommandPool  : info.graphicsCommandPool;
         this->swapchainImagesCount = info.swapchainImagesCount;
 
         return shared_from_this();
@@ -70,7 +77,7 @@ namespace vlb {
         vk::AccelerationStructureGeometryTrianglesDataKHR data{};
         data
             .setVertexFormat(vk::Format::eR32G32B32Sfloat)
-            .setVertexStride(sizeof(Vertex))
+            .setVertexStride(sizeof(shader::Vertex))
             .setMaxVertex(this->vertexCount)
             .setIndexType(vk::IndexType::eUint32)
             .setVertexData(this->vertexBuffer.deviceAddress)
@@ -82,76 +89,36 @@ namespace vlb {
             .setGeometry({data});
 
         vk::AccelerationStructureBuildRangeInfoKHR range{};
-        range
-            .setPrimitiveCount(static_cast<uint32_t>(this->indexCount) / 3)
-            .setPrimitiveOffset(0)
-            .setFirstVertex(0)
-            .setTransformOffset(0);
+        range.setPrimitiveCount(static_cast<uint32_t>(this->indexCount) / 3);
 
         return std::make_pair(geometry, range);
     }
 
-    /*
-       auto Scene_t::Mesh_t::getGeometry()
-       {
-       VkTransformMatrixKHR transformMatrix = {
-       1.0f, 0.0f, 0.0f, 0.0f,
-       0.0f, 1.0f, 0.0f, 0.0f,
-       0.0f, 0.0f, 1.0f, 0.0f };
-
-       std::vector<vk::AccelerationStructureInstanceKHR> instances();
-
-       for (const auto primitive : this->primitives)
-       {
-       vk::AccelerationStructureInstanceKHR instance{};
-       instance
-       .setTransform(transformMatrix)
-       .setInstanceCustomIndex(0) // TODO
-       .setMask(0xFF)
-       .setInstanceShaderBindingTableRecordOffset(0)
-       .setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
-       .setAccelerationStructureReference(this->blas.buffer.deviceAddress);
-       }
-
-       Application::Buffer instanceBuffer = toBuffer(std::move(instances));
-
-       vk::AccelerationStructureGeometryInstancesDataKHR data{};
-       instancesData
-       .setArrayOfPointers(false) // TODO
-       .setData(instanceBuffer.deviceAddress);
-
-       vk::AccelerationStructureGeometryKHR geometry{};
-       geometry
-       .setGeometryType(vk::GeometryTypeKHR::eInstances)
-       .setGeometry({data})
-       .setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-       vk::AccelerationStructureBuildRangeInfoKHR range{};
-       range
-       .setPrimitiveCount(static_cast<uint32_t>(instances.size()))
-       .setPrimitiveOffset(0)
-       .setFirstVertex(0)
-       .setTransformOffset(0);
-
-       return std::make_pair(geometry, range);
-       }
-       */
-
     glm::mat4 Scene_t::Node_t::localMatrix()
     {
-        return glm::translate(glm::mat4(1.0f), this->translation) * glm::mat4(this->rotation) * glm::scale(glm::mat4(1.0f), this->scale) * this->matrix;
+        glm::mat4 matrix(1.0f);
+        matrix = glm::translate(matrix, this->translation);
+        matrix = matrix * this->rotation;
+        matrix = glm::scale(matrix, this->scale);
+        return matrix * this->matrix;
     }
 
-    glm::mat4 Scene_t::Node_t::getMatrix()
+    VkTransformMatrixKHR Scene_t::Node_t::getMatrix()
     {
         glm::mat4 matrix = localMatrix();
+
         Node p = this->parent;
         while (p)
         {
             matrix = p->localMatrix() * matrix;
             p = p->parent;
         }
-        return matrix;
+
+        matrix = glm::transpose(matrix);
+
+        VkTransformMatrixKHR transfromMatrix;
+        memcpy(&transfromMatrix, &matrix, sizeof(VkTransformMatrixKHR));
+        return transfromMatrix;
     }
 
     auto Scene_t::loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label)
@@ -173,7 +140,7 @@ namespace vlb {
     auto Scene_t::fetchVertices(const tinygltf::Primitive& primitive)
     {
         uint32_t vertexCount = static_cast<uint32_t>(this->model.accessors[primitive.attributes.find("POSITION")->second].count);
-        std::vector<Primitive_t::Vertex> vertices(vertexCount);
+        std::vector<shader::Vertex> vertices(vertexCount);
 
         auto[posBuffer, posByteStride, posComponentType] = loadVertexAttribute(primitive, "POSITION");
         auto[nrmBuffer, nrmByteStride, nrmComponentType] = loadVertexAttribute(primitive, "NORMAL");
@@ -187,8 +154,6 @@ namespace vlb {
             if (nrmBuffer) vertices[v].normal   = glm::normalize(glm::vec3(glm::make_vec3( &nrmBuffer[v * nrmByteStride])));
             if (uv0Buffer) vertices[v].uv0      = glm::make_vec2(                          &uv0Buffer[v * uv0ByteStride]);
             if (uv1Buffer) vertices[v].uv1      = glm::make_vec2(                          &uv1Buffer[v * uv1ByteStride]);
-
-            vertices[v].position.y = - vertices[v].position.y;
         }
 
         return std::move(vertices);
@@ -206,7 +171,7 @@ namespace vlb {
             const auto &bufferView = this->model.bufferViews[accessor.bufferView];
             const auto &buffer     = this->model.buffers[bufferView.buffer];
 
-            const void *ptr = &(buffer.data[accessor.byteOffset + bufferView.byteOffset]); // TODO write better :)
+            const void *ptr = buffer.data.data() + accessor.byteOffset + bufferView.byteOffset;
 
             auto fillIndices = [&indices, &ptr, indexCount]<typename T>(const T *buff)
             {
@@ -241,11 +206,14 @@ namespace vlb {
         return std::move(indices);
     }
 
-    Scene_t::AccelerationStructure Scene_t::buildBLAS(const vk::AccelerationStructureGeometryKHR& geometry, const vk::AccelerationStructureBuildRangeInfoKHR& range)
+    Scene_t::AccelerationStructure Scene_t::buildAS(const vk::AccelerationStructureGeometryKHR& geometry, const vk::AccelerationStructureBuildRangeInfoKHR& range)
     {
+        using enum vk::AccelerationStructureTypeKHR;
+        vk::AccelerationStructureTypeKHR level = geometry.geometryType == vk::GeometryTypeKHR::eInstances ? eTopLevel : eBottomLevel;
+
         vk::AccelerationStructureBuildGeometryInfoKHR buildInfo{};
         buildInfo
-            .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+            .setType(level)
             .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
             .setGeometries(geometry);
 
@@ -257,13 +225,13 @@ namespace vlb {
         vk::BufferUsageFlags    usg{ eAccelerationStructureStorageKHR | eShaderDeviceAddress };
         vk::MemoryPropertyFlags mem{ eHostVisible | eHostCoherent };
 
-        auto blas = std::make_shared<Scene_t::AccelerationStructure_t>();
-        blas->buffer = Application::createBuffer(this->device, this->physicalDevice, buildSizes.accelerationStructureSize, usg, mem);
-        blas->handle = this->device.createAccelerationStructureKHRUnique(
+        auto as = std::make_shared<Scene_t::AccelerationStructure_t>();
+        as->buffer = Application::createBuffer(this->device, this->physicalDevice, buildSizes.accelerationStructureSize, usg, mem);
+        as->handle = this->device.createAccelerationStructureKHRUnique(
                 vk::AccelerationStructureCreateInfoKHR{}
-                .setBuffer(blas->buffer.handle.get())
+                .setBuffer(as->buffer.handle.get())
                 .setSize(buildSizes.accelerationStructureSize)
-                .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+                .setType(level)
                 );
 
         usg = eStorageBuffer | eShaderDeviceAddress;
@@ -272,45 +240,74 @@ namespace vlb {
 
         buildInfo
             .setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-            .setDstAccelerationStructure(blas->handle.get())
+            .setDstAccelerationStructure(as->handle.get())
             .setScratchData(scratch.deviceAddress);
 
-        auto cmd = Application::recordCommandBuffer(this->device, this->commandPool.graphics);
+        auto cmd = Application::recordCommandBuffer(this->device, this->commandPool.compute);
         cmd.buildAccelerationStructuresKHR(buildInfo, &range);
-        Application::flushCommandBuffer(this->device, this->commandPool.graphics, cmd, this->queue.graphics); // TODO compute
+        Application::flushCommandBuffer(this->device, this->commandPool.compute, cmd, this->queue.compute);
 
-        blas->address = this->device.getAccelerationStructureAddressKHR({blas->handle.get()});
+        as->address = this->device.getAccelerationStructureAddressKHR({as->handle.get()});
 
-        return std::move(blas);
-    }
-
-    Scene_t::AccelerationStructure Scene_t::buildTLAS()
-    {
-        auto tlas = std::make_shared<Scene_t::AccelerationStructure_t>();
-
-        return tlas;
+        return std::move(as);
     }
 
     Scene Scene_t::buildAccelerationStructures()
     {
+        std::vector<vk::AccelerationStructureInstanceKHR> instances(0);
+        std::vector<shader::InstanceInfo>                 instanceInfos(0);
+
+        // One bottom level acceleration structure per gltf primitive
         for (auto node : linearNodes)
         {
             auto mesh = node->mesh;
 
-            if (!mesh)
+            if (mesh)
             {
-                continue;
-            }
+                VkTransformMatrixKHR transform = node->getMatrix();
 
-            for (auto primitive : mesh->primitives)
-            {
-                const auto [geometry, range] = primitive->getGeometry();
-                primitive->blas = buildBLAS(geometry, range);
-                std::cout << "triangles count: " << range.primitiveCount << "\n";
+                for (auto primitive : mesh->primitives)
+                {
+                    const auto [geometry, range] = primitive->getGeometry();
+                    primitive->blas = buildAS(geometry, range);
+
+                    vk::AccelerationStructureInstanceKHR instance{};
+                    instance
+                        .setTransform(transform)
+                        .setInstanceCustomIndex(instances.size())
+                        .setMask(0xFF)
+                        .setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
+                        .setAccelerationStructureReference(primitive->blas->address);
+
+                    shader::InstanceInfo info{};
+                    info.materialIndex       = primitive->materialIndex;
+                    info.vertexBufferAddress = primitive->vertexBuffer.deviceAddress;
+                    info.indexBufferAddress  = primitive->indexBuffer.deviceAddress;
+
+                    instances.push_back(instance);
+                    instanceInfos.push_back(info);
+
+                }
             }
         }
 
-        this->tlas = buildTLAS();
+        vk::AccelerationStructureBuildRangeInfoKHR range{};
+        range.setPrimitiveCount(static_cast<uint32_t>(instances.size()));
+
+        Application::Buffer instanceBuffer     = toBuffer(std::move(instances));
+
+        vk::AccelerationStructureGeometryInstancesDataKHR data{};
+        data
+            .setArrayOfPointers(false)
+            .setData(instanceBuffer.deviceAddress);
+
+        vk::AccelerationStructureGeometryKHR geometry{};
+        geometry
+            .setGeometryType(vk::GeometryTypeKHR::eInstances)
+            .setGeometry({data});
+
+        this->tlas = buildAS(geometry, range);
+        this->instanceInfoBuffer = toBuffer(std::move(instanceInfos));
 
         return shared_from_this();
     }
@@ -324,7 +321,7 @@ namespace vlb {
         node->translation = gltfNode.translation.size() != 3 ? glm::dvec3(0.0)
             : glm::make_vec3(gltfNode.translation.data());
 
-        node->rotation = gltfNode.rotation.size() != 3 ? glm::dmat4(glm::dquat{})
+        node->rotation = gltfNode.rotation.size() != 4 ? glm::dmat4(glm::dquat{})
             : glm::dmat4(glm::make_quat(gltfNode.rotation.data()));
 
         node->scale = gltfNode.scale.size() != 3 ? glm::dvec3(1.0f)
@@ -344,11 +341,11 @@ namespace vlb {
                 auto indices  = fetchIndices(gltfPrimitive);
 
                 Primitive primitive{new Primitive_t()};
-                primitive->material     = gltfPrimitive.material > -1 ? this->materials[gltfPrimitive.material] : this->materials.back();
-                primitive->vertexCount  = vertices.size();
-                primitive->indexCount   = indices.size();
-                primitive->vertexBuffer = toBuffer(std::move(vertices));
-                primitive->indexBuffer  = toBuffer(std::move(indices));
+                primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materials.size() - 1;
+                primitive->vertexCount   = vertices.size();
+                primitive->indexCount    = indices.size();
+                primitive->vertexBuffer  = toBuffer(std::move(vertices));
+                primitive->indexBuffer   = toBuffer(std::move(indices));
 
                 mesh->primitives.push_back(std::move(primitive));
             }
@@ -634,9 +631,9 @@ namespace vlb {
     }
 
     template <class T>
-        Application::Buffer Scene_t::toBuffer(T data)
+        Application::Buffer Scene_t::toBuffer(T data, size_t size)
         {
-            size_t size = data.size() * sizeof(data.front());
+            size = size == -1 ? data.size() * sizeof(data.front()) : size;
 
             using enum vk::BufferUsageFlagBits;
             using enum vk::MemoryPropertyFlagBits;
@@ -661,7 +658,6 @@ namespace vlb {
             return std::move(buffer);
         }
 
-    // graphics queue requred for blitting! ~duh
     Scene Scene_t::loadTextures()
     {
         for (const auto& gltfTexture : this->model.textures)
@@ -797,7 +793,7 @@ namespace vlb {
     {
         Scene scene{new Scene_t(ci.path)};
 
-        scene->init(this->initInfo);
+        scene->passVulkanResources(this->initInfo);
         scene->loadSamplers();
         scene->loadTextures();
         scene->loadMaterials();
@@ -815,8 +811,8 @@ namespace vlb {
                 ->setMovementSpeed(cameraInfo.movementSpeed)
                 ->setYaw(cameraInfo.yaw)
                 ->setPitch(cameraInfo.pitch)
-                ->setPosition(cameraInfo.position);
-            //TODO->createCameraUBOs(this->device, this->physicalDevice, this->swapchainImagesCount);
+                ->setPosition(cameraInfo.position)
+                ->createCameraUBOs(initInfo.device, initInfo.physicalDevice, initInfo.swapchainImagesCount);
 
             scene->pushCamera(camera);
         }
@@ -833,7 +829,7 @@ namespace vlb {
     {
         Scene scene{new Scene_t(fileName)};
 
-        scene->init(this->initInfo);
+        scene->passVulkanResources(this->initInfo);
         scene->loadSamplers();
         scene->loadTextures();
         scene->loadMaterials();
@@ -860,7 +856,7 @@ namespace vlb {
         this->sceneChangedFlag = true;
     }
 
-    void SceneManager::init(Scene_t::InitInfo& info)
+    void SceneManager::passVulkanResources(Scene_t::VulkanResources& info)
     {
         initInfo = info;
 
@@ -931,5 +927,12 @@ namespace vlb {
         return sceneChanged;
     }
 
+    SceneManager::~SceneManager()
+    {
+        while (scenes.size() > 0)
+        {
+            popScene();
+        }
+    };
 }
 

@@ -184,7 +184,7 @@ namespace vlb {
 
     void Renderer::initSceneManager()
     {
-        auto info = Scene_t::InitInfo
+        auto res = Scene_t::VulkanResources
         {
             this->physicalDevice,
                 this->device.get(),
@@ -192,9 +192,12 @@ namespace vlb {
                 this->commandPool.transfer.get(),
                 this->queue.graphics,
                 this->commandPool.graphics.get(),
+                this->queue.compute,
+                this->commandPool.compute.get(),
                 static_cast<uint32_t>(this->swapchainImageViews.size())
         };
-        this->sceneManager.init(info);
+
+        this->sceneManager.passVulkanResources(res);
     }
 
     void Renderer::render()

@@ -3,28 +3,18 @@
 #extension GL_EXT_scalar_block_layout : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_buffer_reference2 : require
+#extension GL_GOOGLE_include_directive : enable
+
+#include "structures.h"
 
 hitAttributeEXT vec3 attribs;
 layout(location = 0) rayPayloadInEXT vec3 payLoad;
 
-struct ObjDesc
-{
-    uint64_t vertexBufferAddress;
-    uint64_t indexBufferAddress;
-};
+layout(set = 0, binding = 1, scalar) buffer Instances { InstanceInfo i[]; } instanceInfo;
+layout(buffer_reference, scalar) buffer Vertices { Vertex v[]; };
+layout(buffer_reference, scalar) buffer Indices { ivec3 i[]; };
 
-struct Vertex
-{
-    vec4 position;
-    vec3 normal;
-    vec2 uv0;
-    vec2 uv1;
-};
-
-layout(buffer_reference, scalar) buffer Vertices {Vertex v[]; };
-layout(buffer_reference, scalar) buffer Indices {ivec3 i[]; };
-layout(set = 0, binding = 1, scalar) buffer ObjDesc_ { ObjDesc i[]; } objDesc;
-layout(set = 0, binding = 1) uniform sampler2D textureSampler;
+layout(set = 0, binding = 1) uniform sampler2D textureSamples[];
 
 layout(push_constant) uniform constants
 {
@@ -44,9 +34,9 @@ vec4 rgb2srgb(vec4 linearRGB)
 
 void main()
 {
-    ObjDesc    objResource = objDesc.i[gl_InstanceCustomIndexEXT];
-    Indices    indices     = Indices(objResource.indexBufferAddress);
-    Vertices   vertices    = Vertices(objResource.vertexBufferAddress);
+    InstanceInfo info     = instanceInfo.i[gl_InstanceCustomIndexEXT];
+    Indices      indices  = Indices(info.indexBufferAddress);
+    Vertices     vertices = Vertices(info.vertexBufferAddress);
 
     ivec3 ind = indices.i[gl_PrimitiveID];
 
@@ -70,6 +60,20 @@ void main()
 
     const vec4 color = vec4(0.05f) + pc.lightIntensity * diffuse;
 
+    /*
+    const vec4 colors[7] = vec4[](
+            vec4(0.0f, 0.0f, 1.0f, 1.0f),
+            vec4(0.0f, 1.0f, 0.0f, 1.0f),
+            vec4(0.0f, 1.0f, 1.0f, 1.0f),
+            vec4(1.0f, 0.0f, 0.0f, 1.0f),
+            vec4(1.0f, 0.0f, 1.0f, 1.0f),
+            vec4(1.0f, 1.0f, 0.0f, 1.0f),
+            vec4(1.0f, 1.0f, 1.0f, 1.0f)
+            );
+    const vec4 color = colors[gl_InstanceCustomIndexEXT % 7];
+    */
+
     payLoad = rgb2srgb(color).rgb;
+
 }
 

@@ -108,7 +108,7 @@ namespace vlb {
         if (!io.WantCaptureMouse)
         {
             auto[dx, dy] = ImGui::IsAnyMouseDown() ? io.MouseDelta : ImVec2(0.0f, 0.0f);
-            auto newPitch = this->pitch + dy * speed.rotation;
+            auto newPitch = this->pitch - dy * speed.rotation;
             this->pitch = (newPitch > -90.0f && newPitch < 90.0f) ? newPitch : this->pitch;
             this->yaw   -= dx * speed.rotation;
             this->yaw   = static_cast<float>(static_cast<int>(this->yaw) % 360);

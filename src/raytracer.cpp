@@ -231,12 +231,11 @@ namespace vlb {
 
     void Raytracer::updateSceneDescriptorSets()
     {
+        const auto& scene = this->sceneManager.getScene();
+
         vk::WriteDescriptorSetAccelerationStructureKHR tlasDescriptorInfo{};
-        /*
-         * TODO
         tlasDescriptorInfo
-            .setAccelerationStructures(this->tlas.handle.get());
-            */
+            .setAccelerationStructures(scene->tlas->handle.get());
 
         vk::WriteDescriptorSet tlasWriteDS{};
         tlasWriteDS
@@ -246,11 +245,9 @@ namespace vlb {
             .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
             .setPNext(&tlasDescriptorInfo);
 
-        const auto& scene = this->sceneManager.getScene();
-
         vk::DescriptorBufferInfo objDescDescriptorInfo{};
         objDescDescriptorInfo
-            .setBuffer(scene->objDescBuffer.handle.get())
+            .setBuffer(scene->instanceInfoBuffer.handle.get())
             .setRange(VK_WHOLE_SIZE);
 
         vk::WriteDescriptorSet objDescWriteDS{};
@@ -450,10 +447,10 @@ namespace vlb {
 
     Raytracer::Raytracer()
     {
-        //createStorageImage();
-        //createRayTracingPipeline();
-        //createShaderBindingTable();
-        //createDescriptorSets();
+        createStorageImage();
+        createRayTracingPipeline();
+        createShaderBindingTable();
+        createDescriptorSets();
 
         this->drawCommandBuffers = Renderer::createDrawCommandBuffers();
     }

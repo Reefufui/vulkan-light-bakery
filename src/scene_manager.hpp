@@ -106,22 +106,8 @@ namespace vlb {
             typedef std::shared_ptr<Primitive_t> Primitive;
             struct Primitive_t
             {
-                struct Vertex
-                {
-                    glm::vec4 position = glm::vec4(0.0f);
-                    glm::vec3 normal   = glm::vec3(1.0f);
-                    glm::vec2 uv0      = glm::vec2(0.0f);
-                    glm::vec2 uv1      = glm::vec2(0.0f);
-                };
-
-                struct Info
-                {
-                    vk::DeviceAddress vertexBufferAddress;
-                    vk::DeviceAddress indexBufferAddress;
-                };
-
                 AccelerationStructure blas;
-                Material              material;
+                uint64_t              materialIndex;
                 uint32_t              indexCount;
                 uint32_t              vertexCount;
                 Application::Buffer   vertexBuffer;
@@ -151,12 +137,12 @@ namespace vlb {
                 glm::mat4 rotation;
                 glm::mat4 matrix;
                 glm::mat4 localMatrix();
-                glm::mat4 getMatrix();
+                VkTransformMatrixKHR getMatrix();
             };
 
         public:
 
-            struct InitInfo
+            struct VulkanResources
             {
                 vk::PhysicalDevice physicalDevice;
                 vk::Device device;
@@ -164,6 +150,8 @@ namespace vlb {
                 vk::CommandPool transferCommandPool;
                 vk::Queue graphicsQueue;
                 vk::CommandPool graphicsCommandPool;
+                vk::Queue computeQueue;
+                vk::CommandPool computeCommandPool;
                 uint32_t swapchainImagesCount;
             };
 
@@ -187,13 +175,11 @@ namespace vlb {
             Scene_t() = delete;
             Scene_t(std::string& filename);
 
-            Scene init(InitInfo& info);
+            Scene passVulkanResources(VulkanResources& info);
 
-            // Labels
+            // Labels TODO: MAKE PRIVATE
             std::string name;
             std::string path;
-
-            Application::Buffer objDescBuffer;
 
             // load*(*); functions must be called in the same order as declared below
             Scene loadSamplers();
@@ -211,6 +197,10 @@ namespace vlb {
             const int    getCameraIndex();
             const size_t getCamerasCount();
 
+            // TODO MAKE PRIVATE
+            AccelerationStructure tlas;
+            Application::Buffer   instanceInfoBuffer;
+
         private:
 
             // Vulkan resourses
@@ -219,19 +209,19 @@ namespace vlb {
             struct
             {
                 vk::Queue transfer;
+                vk::Queue compute;
                 vk::Queue graphics;
             } queue;
             struct
             {
                 vk::CommandPool transfer;
+                vk::CommandPool compute;
                 vk::CommandPool graphics;
             } commandPool;
             uint32_t       swapchainImagesCount;
 
             tinygltf::Model    model;
             tinygltf::TinyGLTF loader;
-
-            AccelerationStructure tlas;
 
             std::vector<Sampler>  samplers;
             std::vector<Texture>  textures;
@@ -246,9 +236,8 @@ namespace vlb {
             auto fetchVertices(const tinygltf::Primitive& primitive);
             auto fetchIndices(const tinygltf::Primitive& primitive);
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
-            template <class T> Application::Buffer toBuffer(T data);
-            AccelerationStructure buildBLAS(const vk::AccelerationStructureGeometryKHR& geometry, const vk::AccelerationStructureBuildRangeInfoKHR& range);
-            AccelerationStructure buildTLAS();
+            template <class T> Application::Buffer toBuffer(T data, size_t size = -1);
+            AccelerationStructure buildAS(const vk::AccelerationStructureGeometryKHR& geometry, const vk::AccelerationStructureBuildRangeInfoKHR& range);
     };
 
     class SceneManager
@@ -263,11 +252,11 @@ namespace vlb {
             std::vector<Scene      > scenes;
             std::vector<std::string> sceneNames;
 
-            Scene_t::InitInfo initInfo;
+            Scene_t::VulkanResources initInfo;
 
         public:
 
-            void init(Scene_t::InitInfo& info);
+            void passVulkanResources(Scene_t::VulkanResources& info);
 
             Scene&                    getScene(int index = -1);
             const int                 getSceneIndex();
@@ -284,6 +273,8 @@ namespace vlb {
             void pushScene(std::string& fileName);  // hot push on run-time
             void pushScene(Scene_t::CreateInfo ci); // load scene using deserialized ci
             void popScene();
+
+            ~SceneManager();
     };
 }
 
