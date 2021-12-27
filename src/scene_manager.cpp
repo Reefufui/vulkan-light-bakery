@@ -5,11 +5,16 @@
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
+#include <glm/gtx/string_cast.hpp> // Debug
 
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
 #include <utility>
+
+namespace shader {
+#include "structures.h"
+}
 
 namespace vlb {
 
@@ -50,38 +55,70 @@ namespace vlb {
         {
             throw std::runtime_error("Failed to parse glTF");
         }
+    }
 
+    Scene Scene_t::passVulkanResources(Scene_t::VulkanResources& info)
+    {
+        this->device               = info.device;
+        this->physicalDevice       = info.physicalDevice;
+        this->queue.graphics       = info.graphicsQueue;
+        this->commandPool.graphics = info.graphicsCommandPool;
+        this->queue.transfer       = info.transferQueue       ? info.transferQueue       : info.graphicsQueue;
+        this->commandPool.transfer = info.transferCommandPool ? info.transferCommandPool : info.graphicsCommandPool;
+        this->queue.compute        = info.computeQueue        ? info.computeQueue        : info.graphicsQueue;
+        this->commandPool.compute  = info.computeCommandPool  ? info.computeCommandPool  : info.graphicsCommandPool;
+        this->swapchainImagesCount = info.swapchainImagesCount;
+
+        return shared_from_this();
+    }
+
+    auto Scene_t::Primitive_t::getGeometry()
+    {
+        vk::AccelerationStructureGeometryTrianglesDataKHR data{};
+        data
+            .setVertexFormat(vk::Format::eR32G32B32Sfloat)
+            .setVertexStride(sizeof(shader::Vertex))
+            .setMaxVertex(this->vertexCount)
+            .setIndexType(vk::IndexType::eUint32)
+            .setVertexData(this->vertexBuffer.deviceAddress)
+            .setIndexData(this->indexBuffer.deviceAddress);
+
+        vk::AccelerationStructureGeometryKHR geometry{};
+        geometry
+            .setGeometryType(vk::GeometryTypeKHR::eTriangles)
+            .setGeometry({data});
+
+        vk::AccelerationStructureBuildRangeInfoKHR range{};
+        range.setPrimitiveCount(static_cast<uint32_t>(this->indexCount) / 3);
+
+        return std::make_pair(geometry, range);
     }
 
     glm::mat4 Scene_t::Node_t::localMatrix()
     {
-        return glm::translate(glm::mat4(1.0f), this->translation) * glm::mat4(this->rotation) * glm::scale(glm::mat4(1.0f), this->scale) * this->matrix;
+        glm::mat4 matrix(1.0f);
+        matrix = glm::translate(matrix, this->translation);
+        matrix = matrix * this->rotation;
+        matrix = glm::scale(matrix, this->scale);
+        return matrix * this->matrix;
     }
 
-    glm::mat4 Scene_t::Node_t::getMatrix()
+    VkTransformMatrixKHR Scene_t::Node_t::getMatrix()
     {
         glm::mat4 matrix = localMatrix();
+
         Node p = this->parent;
         while (p)
         {
             matrix = p->localMatrix() * matrix;
             p = p->parent;
         }
-        return matrix;
-    }
 
-    void Scene_t::Node_t::update()
-    {
-        if (mesh)
-        {
-            glm::mat4 matrix = getMatrix();
-            memcpy(mesh->uniformBuffer.mapped, &matrix, sizeof(glm::mat4));
-        }
+        matrix = glm::transpose(matrix);
 
-        for (auto& child : children)
-        {
-            child->update();
-        }
+        VkTransformMatrixKHR transfromMatrix;
+        memcpy(&transfromMatrix, &matrix, sizeof(VkTransformMatrixKHR));
+        return transfromMatrix;
     }
 
     auto Scene_t::loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label)
@@ -100,117 +137,241 @@ namespace vlb {
         return std::make_tuple(buffer, byteStride, componentType);
     }
 
-    void Scene_t::loadNode(Node parent, const tinygltf::Node& node, uint32_t nodeIndex)
+    auto Scene_t::fetchVertices(const tinygltf::Primitive& primitive)
     {
-        Node newNode{new Node_t()};
-        newNode->parent = parent;
-        newNode->index = nodeIndex;
+        uint32_t vertexCount = static_cast<uint32_t>(this->model.accessors[primitive.attributes.find("POSITION")->second].count);
+        std::vector<shader::Vertex> vertices(vertexCount);
 
-        newNode->translation = node.translation.size() != 3 ? glm::dvec3(0.0)
-            : glm::make_vec3(node.translation.data());
+        auto[posBuffer, posByteStride, posComponentType] = loadVertexAttribute(primitive, "POSITION");
+        auto[nrmBuffer, nrmByteStride, nrmComponentType] = loadVertexAttribute(primitive, "NORMAL");
+        auto[uv0Buffer, uv0ByteStride, uv0ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_0");
+        auto[uv1Buffer, uv1ByteStride, uv1ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_1");
 
-        newNode->rotation = node.rotation.size() != 3 ? glm::dmat4(glm::dquat{})
-            : glm::dmat4(glm::make_quat(node.rotation.data()));
 
-        newNode->scale = node.scale.size() != 3 ? glm::dvec3(1.0f)
-            : glm::make_vec3(node.scale.data());
-
-        newNode->matrix = node.matrix.size() != 16 ? glm::dmat4(1.0f)
-            : glm::make_mat4x4(node.matrix.data());
-
-        for (const auto& childIndex : node.children)
+        for (uint32_t v{}; v < vertexCount; ++v)
         {
-            const auto& child = this->model.nodes[childIndex];
-            loadNode(newNode, child, childIndex);
+            if (posBuffer) vertices[v].position = glm::vec4(glm::make_vec3(                &posBuffer[v * posByteStride]), 1.0f);
+            if (nrmBuffer) vertices[v].normal   = glm::normalize(glm::vec3(glm::make_vec3( &nrmBuffer[v * nrmByteStride])));
+            if (uv0Buffer) vertices[v].uv0      = glm::make_vec2(                          &uv0Buffer[v * uv0ByteStride]);
+            if (uv1Buffer) vertices[v].uv1      = glm::make_vec2(                          &uv1Buffer[v * uv1ByteStride]);
         }
 
-        if (node.mesh > -1)
+        return std::move(vertices);
+    }
+
+    auto Scene_t::fetchIndices(const tinygltf::Primitive& primitive)
+    {
+        const auto &accessor   = this->model.accessors[primitive.indices];
+
+        uint32_t indexCount = static_cast<uint32_t>(accessor.count);
+        std::vector<uint32_t> indices(indexCount);
+
+        if (indexCount > 0)
         {
-            const tinygltf::Mesh& mesh = this->model.meshes[node.mesh];
-            Mesh newMesh{new Mesh_t()};
-            for (const auto& primitive: mesh.primitives)
+            const auto &bufferView = this->model.bufferViews[accessor.bufferView];
+            const auto &buffer     = this->model.buffers[bufferView.buffer];
+
+            const void *ptr = buffer.data.data() + accessor.byteOffset + bufferView.byteOffset;
+
+            auto fillIndices = [&indices, &ptr, indexCount]<typename T>(const T *buff)
             {
-                assert(primitive.attributes.find("POSITION") != primitive.attributes.end());
-                uint32_t vertexStart = static_cast<uint32_t>(this->vertices.size());
-                uint32_t vertexCount = static_cast<uint32_t>(this->model.accessors[primitive.attributes.find("POSITION")->second].count);
-
-                auto[posBuffer, posByteStride, posComponentType] = loadVertexAttribute(primitive, "POSITION");
-                auto[normalBuffer, normalByteStride, normalComponentType] = loadVertexAttribute(primitive, "NORMAL");
-                auto[uv0Buffer, uv0ByteStride, uv0ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_0");
-                auto[uv1Buffer, uv1ByteStride, uv1ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_1");
-
-                for (uint32_t v{}; v < vertexCount; ++v)
+                buff = static_cast<const T*>(ptr);
+                for (uint32_t i{}; i < indexCount; ++i)
                 {
-                    Vertex vertex{};
-                    vertex.position = glm::vec4(glm::make_vec3(&posBuffer[v * posByteStride]), 1.0f);
-                    vertex.position.y = - vertex.position.y;
-                    vertex.normal = normalBuffer ? glm::normalize(glm::vec3(glm::make_vec3(&normalBuffer[v * normalByteStride]))) : glm::vec3(0.0f);
-                    vertex.uv0 = uv0Buffer ? glm::make_vec2(&uv0Buffer[v * uv0ByteStride]) : glm::vec2(0.0f);
-                    vertex.uv1 = uv1Buffer ? glm::make_vec2(&uv1Buffer[v * uv1ByteStride]) : glm::vec2(0.0f);
-                    this->vertices.push_back(vertex);
+                    indices[i] = static_cast<uint32_t>(buff[i]);
                 }
+            };
 
-                uint32_t indexStart = static_cast<uint32_t>(this->indices.size());
-                uint32_t indexCount = 0;
-                if (primitive.indices > -1)
+            if (accessor.componentType == TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT)
+            {
+                const uint32_t *buff{};
+                fillIndices(buff);
+            }
+            else if (accessor.componentType == TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT)
+            {
+                const uint16_t *buff{};
+                fillIndices(buff);
+            }
+            else if (accessor.componentType == TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE)
+            {
+                const uint8_t *buff{};
+                fillIndices(buff);
+            }
+            else
+            {
+                throw std::runtime_error("Index component type not supported!");
+            }
+        }
+
+        return std::move(indices);
+    }
+
+    Scene_t::AccelerationStructure Scene_t::buildAS(const vk::AccelerationStructureGeometryKHR& geometry, const vk::AccelerationStructureBuildRangeInfoKHR& range)
+    {
+        using enum vk::AccelerationStructureTypeKHR;
+        vk::AccelerationStructureTypeKHR level = geometry.geometryType == vk::GeometryTypeKHR::eInstances ? eTopLevel : eBottomLevel;
+
+        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo{};
+        buildInfo
+            .setType(level)
+            .setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+            .setGeometries(geometry);
+
+        auto buildSizes = this->device.getAccelerationStructureBuildSizesKHR(
+                vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, range.primitiveCount);
+
+        using enum vk::BufferUsageFlagBits;
+        using enum vk::MemoryPropertyFlagBits;
+        vk::BufferUsageFlags    usg{ eAccelerationStructureStorageKHR | eShaderDeviceAddress };
+        vk::MemoryPropertyFlags mem{ eHostVisible | eHostCoherent };
+
+        auto as = std::make_shared<Scene_t::AccelerationStructure_t>();
+        as->buffer = Application::createBuffer(this->device, this->physicalDevice, buildSizes.accelerationStructureSize, usg, mem);
+        as->handle = this->device.createAccelerationStructureKHRUnique(
+                vk::AccelerationStructureCreateInfoKHR{}
+                .setBuffer(as->buffer.handle.get())
+                .setSize(buildSizes.accelerationStructureSize)
+                .setType(level)
+                );
+
+        usg = eStorageBuffer | eShaderDeviceAddress;
+        mem = eDeviceLocal;
+        Application::Buffer scratch = Application::createBuffer(this->device, this->physicalDevice, buildSizes.buildScratchSize, usg, mem);
+
+        buildInfo
+            .setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+            .setDstAccelerationStructure(as->handle.get())
+            .setScratchData(scratch.deviceAddress);
+
+        auto cmd = Application::recordCommandBuffer(this->device, this->commandPool.compute);
+        cmd.buildAccelerationStructuresKHR(buildInfo, &range);
+        Application::flushCommandBuffer(this->device, this->commandPool.compute, cmd, this->queue.compute);
+
+        as->address = this->device.getAccelerationStructureAddressKHR({as->handle.get()});
+
+        return std::move(as);
+    }
+
+    Scene Scene_t::buildAccelerationStructures()
+    {
+        std::vector<vk::AccelerationStructureInstanceKHR> instances(0);
+        std::vector<shader::InstanceInfo>                 instanceInfos(0);
+
+        // One bottom level acceleration structure per gltf primitive
+        for (auto node : linearNodes)
+        {
+            auto mesh = node->mesh;
+
+            if (mesh)
+            {
+                VkTransformMatrixKHR transform = node->getMatrix();
+
+                for (auto primitive : mesh->primitives)
                 {
-                    const auto &accessor = this->model.accessors[primitive.indices];
-                    const auto &bufferView = this->model.bufferViews[accessor.bufferView];
-                    const auto &buffer = this->model.buffers[bufferView.buffer];
+                    const auto [geometry, range] = primitive->getGeometry();
+                    primitive->blas = buildAS(geometry, range);
 
-                    indexCount = static_cast<uint32_t>(accessor.count);
-                    const void *ptr = &(buffer.data[accessor.byteOffset + bufferView.byteOffset]);
+                    vk::AccelerationStructureInstanceKHR instance{};
+                    instance
+                        .setTransform(transform)
+                        .setInstanceCustomIndex(instances.size())
+                        .setMask(0xFF)
+                        .setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
+                        .setAccelerationStructureReference(primitive->blas->address);
 
-                    auto fillIndices = [this, &ptr, vertexStart, indexCount]<typename T>(const T *buff)
-                    {
-                        buff = static_cast<const T*>(ptr);
-                        for (uint32_t i{}; i < indexCount; ++i)
-                        {
-                            this->indices.push_back(buff[i] + vertexStart);
-                        }
-                    };
+                    shader::InstanceInfo info{};
+                    info.materialIndex       = primitive->materialIndex;
+                    info.vertexBufferAddress = primitive->vertexBuffer.deviceAddress;
+                    info.indexBufferAddress  = primitive->indexBuffer.deviceAddress;
 
-                    if (accessor.componentType == TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT)
-                    {
-                        const uint32_t *buff{};
-                        fillIndices(buff);
-                    }
-                    else if (accessor.componentType == TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT)
-                    {
-                        const uint16_t *buff{};
-                        fillIndices(buff);
-                    }
-                    else if (accessor.componentType == TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE)
-                    {
-                        const uint8_t *buff{};
-                        fillIndices(buff);
-                    }
-                    else
-                    {
-                        throw std::runtime_error("Index component type not supported!");
-                    }
+                    instances.push_back(instance);
+                    instanceInfos.push_back(info);
+
                 }
+            }
+        }
 
-                Material material = primitive.material > -1 ? this->materials[primitive.material] : this->materials.back();
-                Primitive newPrimitive{new Primitive_t(indexStart, indexCount, vertexCount, material)};
-                newMesh->primitives.push_back(newPrimitive);
+        vk::AccelerationStructureBuildRangeInfoKHR range{};
+        range.setPrimitiveCount(static_cast<uint32_t>(instances.size()));
+
+        Application::Buffer instanceBuffer     = toBuffer(std::move(instances));
+
+        vk::AccelerationStructureGeometryInstancesDataKHR data{};
+        data
+            .setArrayOfPointers(false)
+            .setData(instanceBuffer.deviceAddress);
+
+        vk::AccelerationStructureGeometryKHR geometry{};
+        geometry
+            .setGeometryType(vk::GeometryTypeKHR::eInstances)
+            .setGeometry({data});
+
+        this->tlas = buildAS(geometry, range);
+        this->instanceInfoBuffer = toBuffer(std::move(instanceInfos));
+
+        return shared_from_this();
+    }
+
+    void Scene_t::loadNode(const Node parent, const tinygltf::Node& gltfNode, const uint32_t nodeIndex)
+    {
+        Node node{new Node_t()};
+        node->parent = parent;
+        node->index  = nodeIndex;
+
+        node->translation = gltfNode.translation.size() != 3 ? glm::dvec3(0.0)
+            : glm::make_vec3(gltfNode.translation.data());
+
+        node->rotation = gltfNode.rotation.size() != 4 ? glm::dmat4(glm::dquat{})
+            : glm::dmat4(glm::make_quat(gltfNode.rotation.data()));
+
+        node->scale = gltfNode.scale.size() != 3 ? glm::dvec3(1.0f)
+            : glm::make_vec3(gltfNode.scale.data());
+
+        node->matrix = gltfNode.matrix.size() != 16 ? glm::dmat4(1.0f)
+            : glm::make_mat4x4(gltfNode.matrix.data());
+
+        if (gltfNode.mesh > -1)
+        {
+            const tinygltf::Mesh& gltfMesh = this->model.meshes[gltfNode.mesh];
+            Mesh mesh = std::make_shared<Mesh_t>();
+
+            for (const auto& gltfPrimitive: gltfMesh.primitives)
+            {
+                auto vertices = fetchVertices(gltfPrimitive);
+                auto indices  = fetchIndices(gltfPrimitive);
+
+                Primitive primitive{new Primitive_t()};
+                primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materials.size() - 1;
+                primitive->vertexCount   = vertices.size();
+                primitive->indexCount    = indices.size();
+                primitive->vertexBuffer  = toBuffer(std::move(vertices));
+                primitive->indexBuffer   = toBuffer(std::move(indices));
+
+                mesh->primitives.push_back(std::move(primitive));
             }
 
-            newNode->mesh = newMesh;
+            node->mesh = mesh;
         }
 
         if (parent)
         {
-            parent->children.push_back(newNode);
+            parent->children.push_back(node);
         }
         else
         {
-            nodes.push_back(newNode);
+            nodes.push_back(node);
         }
-        linearNodes.push_back(newNode);
+
+        linearNodes.push_back(node);
+
+        for (const auto& childIndex : gltfNode.children)
+        {
+            const auto& child = this->model.nodes[childIndex];
+            loadNode(node, child, childIndex);
+        }
     }
 
-    void Scene_t::loadCameras(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t count)
+    Scene Scene_t::loadCameras()
     {
         // TODO: load gltf cameras as well
         Camera camera{new Camera_t()};
@@ -218,13 +379,16 @@ namespace vlb {
             ->setType(Camera_t::Type::eFirstPerson)
             ->setRotationSpeed(0.2f)
             ->setMovementSpeed(1.0f)
-            ->createCameraUBOs(device, physicalDevice, count);
+            ->createCameraUBOs(this->device, this->physicalDevice, this->swapchainImagesCount);
 
         this->cameras.push_back(camera);
         this->cameraIndex = 0;
+
+        return shared_from_this();
     }
 
-    void Scene_t::loadSamplers()
+
+    Scene Scene_t::loadSamplers()
     {
         for (auto& gltfSampler : this->model.samplers)
         {
@@ -265,9 +429,11 @@ namespace vlb {
 
             this->samplers.push_back(sampler);
         }
+
+        return shared_from_this();
     }
 
-    void Scene_t::loadMaterials()
+    Scene Scene_t::loadMaterials()
     {
         auto getTexture = [this](tinygltf::Material& material, std::string&& label)
         {
@@ -406,9 +572,12 @@ namespace vlb {
         }
 
         materials.push_back(Material());
+
+        return shared_from_this();
     }
 
-    void Scene_t::loadNodes()
+
+    Scene Scene_t::loadNodes()
     {
         const auto& scene = this->model.scenes[0];
 
@@ -417,14 +586,18 @@ namespace vlb {
             const auto& node = this->model.nodes[nodeIndex];
             loadNode(nullptr, node, nodeIndex);
         }
+
+        return shared_from_this();
     }
 
-    void Scene_t::setViewingFrustumForCameras(ViewingFrustum frustum)
+    Scene Scene_t::setViewingFrustumForCameras(ViewingFrustum frustum)
     {
         for (auto& camera : cameras)
         {
             camera->setViewingFrustum(frustum);
         }
+
+        return shared_from_this();
     }
 
     Camera Scene_t::getCamera(int index)
@@ -432,9 +605,11 @@ namespace vlb {
         return this->cameras[index == -1 ? this->cameraIndex : index];
     }
 
-    void Scene_t::setCameraIndex(int cameraIndex)
+    Scene Scene_t::setCameraIndex(int cameraIndex)
     {
         this->cameraIndex = cameraIndex;
+
+        return shared_from_this();
     }
 
     const int Scene_t::getCameraIndex()
@@ -442,10 +617,12 @@ namespace vlb {
         return this->cameraIndex;
     }
 
-    void Scene_t::pushCamera(Camera camera)
+    Scene Scene_t::pushCamera(Camera camera)
     {
         // TODO: change index here
         this->cameras.push_back(camera);
+
+        return shared_from_this();
     }
 
     const size_t Scene_t::getCamerasCount()
@@ -453,73 +630,35 @@ namespace vlb {
         return this->cameras.size();
     }
 
-    void Scene_t::createBLASBuffers(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool)
-    {
-        size_t vertexBufferSize = this->vertices.size() * sizeof(Vertex);
-        size_t indexBufferSize = this->indices.size() * sizeof(uint32_t);
-
-        auto copyCmdBuffer = Application::recordCommandBuffer(device, copyCommandPool);
-
-        vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
-        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
-
-        Application::Buffer stagingVertexBuffer = Application::createBuffer(device, physicalDevice, vertexBufferSize, usage, memoryProperty, this->vertices.data());
-        Application::Buffer stagingIndexBuffer  = Application::createBuffer(device, physicalDevice, indexBufferSize, usage, memoryProperty, this->indices.data());
-
-        usage = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
-            | vk::BufferUsageFlagBits::eShaderDeviceAddress
-            | vk::BufferUsageFlagBits::eTransferDst
-            | vk::BufferUsageFlagBits::eStorageBuffer;
-        memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
-
-        this->vertexBuffer = Application::createBuffer(device, physicalDevice, vertexBufferSize, usage, memoryProperty);
-        this->indexBuffer = Application::createBuffer(device, physicalDevice, indexBufferSize, usage, memoryProperty);
-
-        vk::BufferCopy copyRegion{};
-        copyRegion.setSize(vertexBufferSize);
-        copyCmdBuffer.copyBuffer(stagingVertexBuffer.handle.get(), this->vertexBuffer.handle.get(), 1, &copyRegion);
-        copyRegion.setSize(indexBufferSize);
-        copyCmdBuffer.copyBuffer(stagingIndexBuffer.handle.get(), this->indexBuffer.handle.get(), 1, &copyRegion);
-
-        Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
-    }
-
-    void Scene_t::createObjectDescBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& transferQueue, vk::CommandPool& copyCommandPool)
-    {
-        struct ObjDesc
+    template <class T>
+        Application::Buffer Scene_t::toBuffer(T data, size_t size)
         {
-            vk::DeviceAddress vertexBuffer;
-            vk::DeviceAddress indexBuffer;
-        } objDesc;
+            size = size == -1 ? data.size() * sizeof(data.front()) : size;
 
-        objDesc.vertexBuffer = device.getBufferAddressKHR(this->vertexBuffer.handle.get());
-        objDesc.indexBuffer  = device.getBufferAddressKHR(this->indexBuffer.handle.get());
+            using enum vk::BufferUsageFlagBits;
+            using enum vk::MemoryPropertyFlagBits;
+            vk::BufferUsageFlags    usg{};
+            vk::MemoryPropertyFlags mem{};
 
-        auto copyCmdBuffer = Application::recordCommandBuffer(device, copyCommandPool);
+            usg = eTransferSrc;
+            mem = eHostVisible | eHostCoherent;
+            Application::Buffer staging = Application::createBuffer(this->device, this->physicalDevice, size, usg, mem, data.data());
 
-        vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
-        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+            usg = eTransferDst | eAccelerationStructureBuildInputReadOnlyKHR | eShaderDeviceAddress | eStorageBuffer;
+            mem = eDeviceLocal;
+            Application::Buffer buffer = Application::createBuffer(this->device, this->physicalDevice, size, usg, mem);
 
-        auto size = sizeof(ObjDesc);
+            vk::BufferCopy copyRegion{};
+            copyRegion.setSize(size);
 
-        Application::Buffer staging = Application::createBuffer(device, physicalDevice, size, usage, memoryProperty, &objDesc);
+            auto cmd = Application::recordCommandBuffer(this->device, this->commandPool.transfer);
+            cmd.copyBuffer(staging.handle.get(), buffer.handle.get(), 1, &copyRegion);
+            Application::flushCommandBuffer(this->device, this->commandPool.transfer, cmd, this->queue.transfer);
 
-        usage = vk::BufferUsageFlagBits::eShaderDeviceAddress
-            | vk::BufferUsageFlagBits::eTransferDst
-            | vk::BufferUsageFlagBits::eStorageBuffer;
-        memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+            return std::move(buffer);
+        }
 
-        this->objDescBuffer = Application::createBuffer(device, physicalDevice, size, usage, memoryProperty);
-
-        vk::BufferCopy copyRegion{};
-        copyRegion.setSize(size);
-        copyCmdBuffer.copyBuffer(staging.handle.get(), this->objDescBuffer.handle.get(), 1, &copyRegion);
-
-        Application::flushCommandBuffer(device, copyCommandPool, copyCmdBuffer, transferQueue);
-    }
-
-    // graphics queue requred for blitting! ~duh
-    void Scene_t::loadTextures(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Queue& graphicsQueue, vk::CommandPool& graphicsCommandPool)
+    Scene Scene_t::loadTextures()
     {
         for (const auto& gltfTexture : this->model.textures)
         {
@@ -533,7 +672,7 @@ namespace vlb {
 
             vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
             vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
-            Application::Buffer staging = Application::createBuffer(device, physicalDevice, gltfImage.image.size(), usage, memoryProperty, gltfImage.image.data());
+            Application::Buffer staging = Application::createBuffer(this->device, this->physicalDevice, gltfImage.image.size(), usage, memoryProperty, gltfImage.image.data());
 
             std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
             vk::Extent3D extent{static_cast<uint32_t>(gltfImage.width), static_cast<uint32_t>(gltfImage.height), 1};
@@ -554,18 +693,18 @@ namespace vlb {
                     .setExtent(extent)
                     );
 
-            auto memoryRequirements = device.getImageMemoryRequirements(texture->image.handle.get());
+            auto memoryRequirements = this->device.getImageMemoryRequirements(texture->image.handle.get());
             memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
 
-            texture->image.memory = device.allocateMemoryUnique(
+            texture->image.memory = this->device.allocateMemoryUnique(
                     vk::MemoryAllocateInfo{}
                     .setAllocationSize(memoryRequirements.size)
-                    .setMemoryTypeIndex(Application::getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
+                    .setMemoryTypeIndex(Application::getMemoryType(this->physicalDevice, memoryRequirements, memoryProperty))
                     );
 
             device.bindImageMemory(texture->image.handle.get(), texture->image.memory.get(), 0);
 
-            auto blittingCmdBuffer = Application::recordCommandBuffer(device, graphicsCommandPool);
+            auto blittingCmdBuffer = Application::recordCommandBuffer(this->device, this->commandPool.graphics);
 
             Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
                     { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
@@ -608,11 +747,11 @@ namespace vlb {
             Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
                     { vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 });
 
-            Application::flushCommandBuffer(device, graphicsCommandPool, blittingCmdBuffer, graphicsQueue);
+            Application::flushCommandBuffer(this->device, this->commandPool.graphics, blittingCmdBuffer, queue.graphics);
 
             Sampler textureSampler = gltfTexture.sampler == -1 ? Sampler{} : this->samplers[gltfTexture.sampler];
 
-            texture->sampler = device.createSamplerUnique(
+            texture->sampler = this->device.createSamplerUnique(
                     vk::SamplerCreateInfo{}
                     .setMagFilter(textureSampler.magFilter)
                     .setMinFilter(textureSampler.minFilter)
@@ -628,7 +767,7 @@ namespace vlb {
                     .setMaxAnisotropy(8.0f)
                     .setAnisotropyEnable(VK_TRUE));
 
-            texture->image.imageView = device.createImageViewUnique(
+            texture->image.imageView = this->device.createImageViewUnique(
                     vk::ImageViewCreateInfo{}
                     .setImage(texture->image.handle.get())
                     .setViewType(vk::ImageViewType::e2D)
@@ -646,16 +785,20 @@ namespace vlb {
 
             this->textures.push_back(texture);
         }
+
+        return shared_from_this();
     }
 
     void SceneManager::pushScene(Scene_t::CreateInfo ci)
     {
         Scene scene{new Scene_t(ci.path)};
 
+        scene->passVulkanResources(this->initInfo);
         scene->loadSamplers();
-        scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+        scene->loadTextures();
         scene->loadMaterials();
         scene->loadNodes();
+        scene->buildAccelerationStructures();
 
         // Instead of calling loadCameras() to fetch cameras from glTF file we load cameras from ci.
         assert(ci.cameras.size());
@@ -669,15 +812,12 @@ namespace vlb {
                 ->setYaw(cameraInfo.yaw)
                 ->setPitch(cameraInfo.pitch)
                 ->setPosition(cameraInfo.position)
-                ->createCameraUBOs(this->device, this->physicalDevice, this->swapchainImagesCount);
+                ->createCameraUBOs(initInfo.device, initInfo.physicalDevice, initInfo.swapchainImagesCount);
 
             scene->pushCamera(camera);
         }
         scene->setCameraIndex(ci.cameraIndex);
         scene->setViewingFrustumForCameras(this->frustum);
-
-        scene->createBLASBuffers(     this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
-        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
 
         this->scenes.push_back(scene);
         this->sceneNames.push_back(ci.name);
@@ -689,16 +829,15 @@ namespace vlb {
     {
         Scene scene{new Scene_t(fileName)};
 
+        scene->passVulkanResources(this->initInfo);
         scene->loadSamplers();
-        scene->loadTextures(this->device, this->physicalDevice, this->queue.graphics, this->commandPool.graphics);
+        scene->loadTextures();
         scene->loadMaterials();
         scene->loadNodes();
-        scene->loadCameras(this->device, this->physicalDevice, this->swapchainImagesCount);
+        scene->buildAccelerationStructures();
+        scene->loadCameras();
         scene->setCameraIndex(0);
         scene->setViewingFrustumForCameras(this->frustum);
-
-        scene->createBLASBuffers(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
-        scene->createObjectDescBuffer(this->device, this->physicalDevice, this->queue.transfer, this->commandPool.transfer);
 
         this->scenes.push_back(scene);
         this->sceneNames.push_back(scene->name);
@@ -709,7 +848,7 @@ namespace vlb {
 
     void SceneManager::popScene()
     {
-        this->device.waitIdle();
+        this->initInfo.device.waitIdle();
         this->scenes.erase(this->scenes.begin() + this->sceneIndex);
         this->sceneNames.erase(this->sceneNames.begin() + this->sceneIndex);
 
@@ -717,15 +856,9 @@ namespace vlb {
         this->sceneChangedFlag = true;
     }
 
-    void SceneManager::init(InitInfo& info)
+    void SceneManager::passVulkanResources(Scene_t::VulkanResources& info)
     {
-        this->device               = info.device;
-        this->physicalDevice       = info.physicalDevice;
-        this->queue.transfer       = info.transferQueue;
-        this->commandPool.transfer = info.transferCommandPool;
-        this->queue.graphics       = info.graphicsQueue;
-        this->commandPool.graphics = info.graphicsCommandPool;
-        this->swapchainImagesCount = info.swapchainImagesCount;
+        initInfo = info;
 
         this->sceneChangedFlag = false;
         this->sceneIndex = 0;
@@ -793,5 +926,13 @@ namespace vlb {
         std::swap(sceneChanged, this->sceneChangedFlag);
         return sceneChanged;
     }
+
+    SceneManager::~SceneManager()
+    {
+        while (scenes.size() > 0)
+        {
+            popScene();
+        }
+    };
 }
 

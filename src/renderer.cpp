@@ -184,7 +184,7 @@ namespace vlb {
 
     void Renderer::initSceneManager()
     {
-        auto sceneManagerInitInfo = SceneManager::InitInfo
+        auto res = Scene_t::VulkanResources
         {
             this->physicalDevice,
                 this->device.get(),
@@ -192,9 +192,12 @@ namespace vlb {
                 this->commandPool.transfer.get(),
                 this->queue.graphics,
                 this->commandPool.graphics.get(),
+                this->queue.compute,
+                this->commandPool.compute.get(),
                 static_cast<uint32_t>(this->swapchainImageViews.size())
         };
-        this->sceneManager.init(sceneManagerInitInfo);
+
+        this->sceneManager.passVulkanResources(res);
     }
 
     void Renderer::render()
@@ -209,14 +212,12 @@ namespace vlb {
         }
 
         this->device.get().waitIdle();
-        ui.cleanup();
-        glfwTerminate();
     }
 
     Renderer::Renderer()
     {
-        this->window  = createWindow(2000, 1000);
-        this->surface = createSurface();
+        this->window    = createWindow(2000, 1000);
+        this->surface   = createSurface();
         this->swapchain = createSwapchain();
         createSwapchainResourses();
         createDrawCommandBuffers();
@@ -231,6 +232,9 @@ namespace vlb {
 
     Renderer::~Renderer()
     {
+        ui.cleanup();
+        glfwTerminate();
+
         for (size_t i = 0; i < this->maxFramesInFlight; ++i)
         {
             this->device.get().destroy(this->inFlightFences[i]);

@@ -10,8 +10,6 @@ namespace vlb {
     class Raytracer : public Renderer
     {
         private:
-            void createBLAS();
-            void createTLAS();
             void createStorageImage();
             void createRayTracingPipeline();
             void createShaderBindingTable();
@@ -23,20 +21,12 @@ namespace vlb {
             void draw();
             void handleSceneChange();
 
-            struct AccelerationStructure
-            {
-                vk::UniqueAccelerationStructureKHR handle;
-                Application::Buffer buffer;
-            };
-
             struct ShaderBindingTable
             {
                 std::unordered_map<std::string, vk::StridedDeviceAddressRegionKHR> entries;
                 std::vector<Buffer> storage;
             };
 
-            AccelerationStructure blas;
-            AccelerationStructure tlas;
             Image rayGenStorage;
             ShaderBindingTable sbt;
 

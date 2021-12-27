@@ -25,7 +25,7 @@ namespace vlb {
         bool  flipY;
 
         ViewingFrustum_t()
-            : aspect(1.0f), yfov(60.f), zfar(10000.f), znear(0.001f), flipY(false)
+            : aspect(1.0f), yfov(60.f), zfar(10000.f), znear(0.001f), flipY(true)
         {
         }
 

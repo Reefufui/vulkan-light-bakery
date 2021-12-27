@@ -25,7 +25,7 @@ void main()
     float tmin = 0.001;
     float tmax = 10000.0;
 
-    payLoad = vec3(0.0);
+    payLoad = vec3(0.f);
 
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
 
