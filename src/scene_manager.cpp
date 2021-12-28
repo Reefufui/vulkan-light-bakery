@@ -94,23 +94,14 @@ namespace vlb {
         return std::make_pair(geometry, range);
     }
 
-    glm::mat4 Scene_t::Node_t::localMatrix()
-    {
-        glm::mat4 matrix(1.0f);
-        matrix = glm::translate(matrix, this->translation);
-        matrix = matrix * this->rotation;
-        matrix = glm::scale(matrix, this->scale);
-        return matrix * this->matrix;
-    }
-
     VkTransformMatrixKHR Scene_t::Node_t::getMatrix()
     {
-        glm::mat4 matrix = localMatrix();
+        glm::mat4 matrix = this->matrix;
 
         Node p = this->parent;
         while (p)
         {
-            matrix = p->localMatrix() * matrix;
+            matrix = p->matrix * matrix;
             p = p->parent;
         }
 
@@ -249,7 +240,7 @@ namespace vlb {
 
         as->address = this->device.getAccelerationStructureAddressKHR({as->handle.get()});
 
-        return std::move(as);
+        return as;
     }
 
     Scene Scene_t::buildAccelerationStructures()
@@ -294,7 +285,7 @@ namespace vlb {
         vk::AccelerationStructureBuildRangeInfoKHR range{};
         range.setPrimitiveCount(static_cast<uint32_t>(instances.size()));
 
-        Application::Buffer instanceBuffer     = toBuffer(std::move(instances));
+        Application::Buffer instanceBuffer = toBuffer(std::move(instances));
 
         vk::AccelerationStructureGeometryInstancesDataKHR data{};
         data
@@ -312,23 +303,29 @@ namespace vlb {
         return shared_from_this();
     }
 
+    glm::mat4 Scene_t::loadMatrix(const tinygltf::Node& gltfNode)
+    {
+        glm::vec3 translation = gltfNode.translation.size() != 3 ? glm::dvec3(0.0) : glm::make_vec3(gltfNode.translation.data());
+        glm::mat4 rotation    = gltfNode.rotation.size() != 4 ? glm::dmat4(glm::dquat{}) : glm::dmat4(glm::make_quat(gltfNode.rotation.data()));
+        glm::vec3 scale       = gltfNode.scale.size() != 3 ? glm::dvec3(1.0f) : glm::make_vec3(gltfNode.scale.data());
+        glm::mat4 transform   = gltfNode.matrix.size() != 16 ? glm::dmat4(1.0f) : glm::make_mat4x4(gltfNode.matrix.data());
+
+        glm::mat4 matrix(1.0f);
+        matrix = glm::translate(matrix, translation);
+        matrix = matrix * rotation;
+        matrix = glm::scale(matrix, scale);
+        matrix = matrix * transform;
+
+        return matrix;
+    }
+
     void Scene_t::loadNode(const Node parent, const tinygltf::Node& gltfNode, const uint32_t nodeIndex)
     {
         Node node{new Node_t()};
         node->parent = parent;
         node->index  = nodeIndex;
 
-        node->translation = gltfNode.translation.size() != 3 ? glm::dvec3(0.0)
-            : glm::make_vec3(gltfNode.translation.data());
-
-        node->rotation = gltfNode.rotation.size() != 4 ? glm::dmat4(glm::dquat{})
-            : glm::dmat4(glm::make_quat(gltfNode.rotation.data()));
-
-        node->scale = gltfNode.scale.size() != 3 ? glm::dvec3(1.0f)
-            : glm::make_vec3(gltfNode.scale.data());
-
-        node->matrix = gltfNode.matrix.size() != 16 ? glm::dmat4(1.0f)
-            : glm::make_mat4x4(gltfNode.matrix.data());
+        node->matrix = loadMatrix(gltfNode);
 
         if (gltfNode.mesh > -1)
         {
@@ -929,7 +926,7 @@ namespace vlb {
 
     SceneManager::~SceneManager()
     {
-        while (scenes.size() > 0)
+        while (scenes.size())
         {
             popScene();
         }

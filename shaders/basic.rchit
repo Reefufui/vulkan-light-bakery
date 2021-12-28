@@ -48,19 +48,16 @@ void main()
 
     // Computing the coordinates of the hit position
     const vec3 pos      = v0.position.xyz * bcCoords.x + v1.position.xyz * bcCoords.y + v2.position.xyz * bcCoords.z;
-    const vec3 worldPos = vec3(gl_ObjectToWorldEXT * vec4(pos, 1.0));  // Transforming the position to world space
+    const vec3 worldPos = vec3(gl_ObjectToWorldEXT * vec4(pos, 1.0));
 
     // Computing the normal at hit position
     const vec3 nrm      = v0.normal * bcCoords.x + v1.normal * bcCoords.y + v2.normal * bcCoords.z;
-    const vec3 worldNrm = normalize(vec3(nrm * gl_WorldToObjectEXT));  // Transforming the normal to world space
+    const vec3 worldNrm = normalize(vec3(nrm * gl_WorldToObjectEXT));
 
     const vec3 toLight = lightPos - worldPos;
 
     const vec4 diffuse = vec4(1.0f) * max(dot(worldNrm, normalize(toLight)), 0.0f);
 
-    const vec4 color = vec4(0.05f) + pc.lightIntensity * diffuse;
-
-    /*
     const vec4 colors[7] = vec4[](
             vec4(0.0f, 0.0f, 1.0f, 1.0f),
             vec4(0.0f, 1.0f, 0.0f, 1.0f),
@@ -70,8 +67,11 @@ void main()
             vec4(1.0f, 1.0f, 0.0f, 1.0f),
             vec4(1.0f, 1.0f, 1.0f, 1.0f)
             );
-    const vec4 color = colors[gl_InstanceCustomIndexEXT % 7];
-    */
+
+    //int colorIdx = int(info.materialIndex);
+    int colorIdx = int(gl_InstanceCustomIndexEXT);
+    vec4 color = vec4(0.05f) + pc.lightIntensity * diffuse;
+    color = color * colors[colorIdx % 7];
 
     payLoad = rgb2srgb(color).rgb;
 

@@ -129,14 +129,8 @@ namespace vlb {
                 Node parent;
                 uint32_t index;
                 std::vector<Node> children;
-
                 Mesh mesh;
-
-                glm::vec3 translation;
-                glm::vec3 scale;
-                glm::mat4 rotation;
                 glm::mat4 matrix;
-                glm::mat4 localMatrix();
                 VkTransformMatrixKHR getMatrix();
             };
 
@@ -233,6 +227,7 @@ namespace vlb {
             int cameraIndex;
 
             void loadNode(const Node parent, const tinygltf::Node& node, const uint32_t nodeIndex);
+            glm::mat4 loadMatrix(const tinygltf::Node& gltfNode);
             auto fetchVertices(const tinygltf::Primitive& primitive);
             auto fetchIndices(const tinygltf::Primitive& primitive);
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
