@@ -1,6 +1,7 @@
 // created in 2021 by Andrey Treefonov https://github.com/Reefufui
 
 #include "raytracer.hpp"
+#include "structures.h"
 
 #include <limits>
 
@@ -73,6 +74,11 @@ namespace vlb {
                 .setBinding(1)
                     .setDescriptorType(vk::DescriptorType::eStorageBuffer)
                     .setDescriptorCount(1)
+                    .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
+                    vk::DescriptorSetLayoutBinding{}
+                .setBinding(2)
+                    .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                    .setDescriptorCount(1)
                     .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
             };
 
@@ -103,7 +109,7 @@ namespace vlb {
         layouts.push_back(this->sceneManager.getCamera()->getDescriptorSetLayout());
 
         std::vector<vk::PushConstantRange> pushConstants{
-            { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(PushConstant) }
+            { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(shader::PushConstant) }
         };
 
         this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
@@ -257,8 +263,21 @@ namespace vlb {
             .setDstBinding(1)
             .setBufferInfo(objDescDescriptorInfo);
 
+        vk::DescriptorBufferInfo materialsDescriptorInfo{};
+        materialsDescriptorInfo
+            .setBuffer(scene->materialBuffer.handle.get())
+            .setRange(VK_WHOLE_SIZE);
+
+        vk::WriteDescriptorSet materialsWriteDS{};
+        materialsWriteDS
+            .setDstSet(this->descriptorSet.scene.get())
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(2)
+            .setBufferInfo(materialsDescriptorInfo);
+
         this->device.get().updateDescriptorSets(tlasWriteDS, nullptr);
         this->device.get().updateDescriptorSets(objDescWriteDS, nullptr);
+        this->device.get().updateDescriptorSets(materialsWriteDS, nullptr);
     }
 
     void Raytracer::updateResultImageDescriptorSets()
@@ -284,13 +303,13 @@ namespace vlb {
             {vk::DescriptorType::eAccelerationStructureKHR, 1},
             {vk::DescriptorType::eStorageImage, 1},
             {vk::DescriptorType::eUniformBuffer, 1},
-            {vk::DescriptorType::eStorageBuffer, 1}
+            {vk::DescriptorType::eStorageBuffer, 2}
         };
 
         this->descriptorPool = this->device.get().createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
-                .setMaxSets(3)
+                .setMaxSets(2)
                 .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
                 );
 
@@ -346,11 +365,12 @@ namespace vlb {
                 nullptr
                 );
 
-        this->pc.lightIntensity = this->ui.getLightIntensity();
+        shader::PushConstant pc { this->ui.getLightIntensity() };
+
         commandBuffer->pushConstants(
                 this->pipelineLayout.get(),
                 vk::ShaderStageFlagBits::eClosestHitKHR,
-                0, sizeof(PushConstant), &(this->pc)
+                0, sizeof(pc), &pc
                 );
 
         auto[width, height, depth] = this->surfaceExtent;

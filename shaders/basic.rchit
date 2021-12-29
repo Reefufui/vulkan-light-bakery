@@ -5,22 +5,20 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_GOOGLE_include_directive : enable
 
+#define BASIC_RCHIT
+
 #include "structures.h"
 
 hitAttributeEXT vec3 attribs;
 layout(location = 0) rayPayloadInEXT vec3 payLoad;
 
 layout(set = 0, binding = 1, scalar) buffer Instances { InstanceInfo i[]; } instanceInfo;
-layout(buffer_reference, scalar) buffer Vertices { Vertex v[]; };
-layout(buffer_reference, scalar) buffer Indices { ivec3 i[]; };
+layout(set = 0, binding = 2, scalar) buffer Materials { Material     m[]; } materials;
+layout(set = 0, binding = 3) uniform sampler2DArray textures;
 
-layout(set = 0, binding = 1) uniform sampler2D textureSamples[];
+layout(buffer_reference, scalar) buffer Vertices  { Vertex v[]; };
+layout(buffer_reference, scalar) buffer Indices   { ivec3  i[]; };
 
-layout(push_constant) uniform constants
-{
-    float lightIntensity;
-    vec3 lightPos;
-} pc;
 vec3 lightPos = vec3(20.0f, 20.0f, 20.0f);
 
 vec4 rgb2srgb(vec4 linearRGB)
@@ -37,6 +35,7 @@ void main()
     InstanceInfo info     = instanceInfo.i[gl_InstanceCustomIndexEXT];
     Indices      indices  = Indices(info.indexBufferAddress);
     Vertices     vertices = Vertices(info.vertexBufferAddress);
+    Material     material = materials.m[int(info.materialIndex)];
 
     ivec3 ind = indices.i[gl_PrimitiveID];
 
@@ -68,9 +67,14 @@ void main()
             vec4(1.0f, 1.0f, 1.0f, 1.0f)
             );
 
+    vec2 uv = v0.uv0 * bcCoords.x + v1.uv0 * bcCoords.y + v2.uv0 * bcCoords.z;
+
+    int colorIdx = int(material.textures.baseColor.index);
     //int colorIdx = int(info.materialIndex);
-    int colorIdx = int(gl_InstanceCustomIndexEXT);
-    vec4 color = vec4(0.05f) + pc.lightIntensity * diffuse;
+    //int colorIdx = int(gl_InstanceCustomIndexEXT);
+
+    vec4 color = vec4(0.05f) + constants.lightIntensity * diffuse;
+    //color = color * texture(textures, vec3(uv, material.textures.baseColor.index));
     color = color * colors[colorIdx % 7];
 
     payLoad = rgb2srgb(color).rgb;

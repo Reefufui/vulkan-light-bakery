@@ -15,8 +15,7 @@ namespace vlb {
             void createShaderBindingTable();
             void createDescriptorSets();
             void updateResultImageDescriptorSets();
-            void updateCameraDescriptorSets();
-            void updateSceneDescriptorSets();
+            void updateSceneDescriptorSets(); // TODO: make scene's private
             void recordDrawCommandBuffer(uint64_t imageIndex);
             void draw();
             void handleSceneChange();
@@ -29,11 +28,6 @@ namespace vlb {
 
             Image rayGenStorage;
             ShaderBindingTable sbt;
-
-            struct PushConstant
-            {
-                float lightIntensity;
-            } pc;
 
             //TODO: impl. better descriptor sets managment (maybe auto-generated)
             struct DSLayout
