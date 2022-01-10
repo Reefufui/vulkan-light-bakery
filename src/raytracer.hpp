@@ -13,6 +13,7 @@ namespace vlb {
             void createStorageImage();
             void createRayTracingPipeline();
             void createShaderBindingTable();
+            void createResultImageDSLayout();
             void createDescriptorSets();
             void updateResultImageDescriptorSets();
             void updateSceneDescriptorSets(); // TODO: make scene's private
@@ -32,7 +33,6 @@ namespace vlb {
             //TODO: impl. better descriptor sets managment (maybe auto-generated)
             struct DSLayout
             {
-                vk::UniqueDescriptorSetLayout scene;
                 vk::UniqueDescriptorSetLayout resultImage;
             };
 

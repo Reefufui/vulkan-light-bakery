@@ -68,6 +68,44 @@ namespace vlb {
         return shared_from_this();
     }
 
+    Scene Scene_t::createDescriptorSetLayout()
+    {
+        std::vector<vk::DescriptorSetLayoutBinding> bindings{
+            vk::DescriptorSetLayoutBinding{}
+            .setBinding(0)
+                .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(1)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(2)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(3)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setDescriptorCount(this->textures.size() ? this->textures.size() : 1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
+        };
+
+        this->descriptorSetLayout = this->device.createDescriptorSetLayoutUnique(
+                vk::DescriptorSetLayoutCreateInfo{}
+                .setBindings(bindings)
+                );
+
+        return shared_from_this();
+    }
+
+    vk::DescriptorSetLayout Scene_t::getDescriptorSetLayout()
+    {
+        return this->descriptorSetLayout.get();
+    }
+
     auto Scene_t::Primitive_t::getGeometry()
     {
         vk::AccelerationStructureGeometryTrianglesDataKHR data{};
@@ -756,7 +794,7 @@ namespace vlb {
                     .setImage(texture->image.handle.get())
                     .setViewType(vk::ImageViewType::e2D)
                     .setFormat(vk::Format::eB8G8R8A8Unorm)
-                    .setComponents({ vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA })
+                    .setComponents({ vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eA })
                     .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
                     );
 
@@ -783,6 +821,7 @@ namespace vlb {
         scene->loadMaterials();
         scene->loadNodes();
         scene->buildAccelerationStructures();
+        scene->createDescriptorSetLayout();
 
         // Instead of calling loadCameras() to fetch cameras from glTF file we load cameras from ci.
         assert(ci.cameras.size());
@@ -819,6 +858,7 @@ namespace vlb {
         scene->loadMaterials();
         scene->loadNodes();
         scene->buildAccelerationStructures();
+        scene->createDescriptorSetLayout();
         scene->loadCameras();
         scene->setCameraIndex(0);
         scene->setViewingFrustumForCameras(this->frustum);

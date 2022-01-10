@@ -51,15 +51,15 @@ namespace shader {
     };
 
 #ifdef __cplusplus
-#define _MINUS_ONE = -1.0f
+#define _MINUS_ONE = -1
 #else
 #define _MINUS_ONE
 #endif
 
     struct Texture
     {
-        float index _MINUS_ONE;
-        int   coordSet;
+        int index _MINUS_ONE;
+        int coordSet;
     };
 
     struct Textures

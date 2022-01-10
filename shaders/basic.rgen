@@ -31,3 +31,4 @@ void main()
 
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payLoad, 0.0));
 }
+

@@ -34,47 +34,13 @@ namespace vlb {
             VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
             void *)
     {
-        std::ostringstream message{};
-
-        message << vk::to_string(static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(messageSeverity)) << ": ";
-        message << vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagsEXT>(messageTypes)) << ":\n";
-        message << "\tmessageIDName   = <" << pCallbackData->pMessageIdName  << ">\n";
-        message << "\tmessageIdNumber = "  << pCallbackData->messageIdNumber << "\n";
-        message << "\tmessage         = <" << pCallbackData->pMessage        << ">\n";
-
-        if (pCallbackData->queueLabelCount > 0)
+        static std::string message{};
+        std::string newMessage = pCallbackData->pMessage;
+        if (message != newMessage)
         {
-            message << "\tQueue Labels:\n";
-            for (uint8_t i{}; i < pCallbackData->queueLabelCount; i++)
-            {
-                message << "\t\tlabelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
-            }
+            std::cout << "\n" << newMessage << "\n";
+            message = std::move(newMessage);
         }
-        if (pCallbackData->cmdBufLabelCount > 0)
-        {
-            message << "\tCommandBuffer Labels:\n";
-            for (uint8_t i{}; i < pCallbackData->cmdBufLabelCount; i++)
-            {
-                message << "\t\tlabelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
-            }
-        }
-        if (pCallbackData->objectCount > 0)
-        {
-            message << "\tObjects:\n";
-            for ( uint8_t i = 0; i < pCallbackData->objectCount; i++ )
-            {
-                message << "\t\tObject " << i << "\n";
-                message << "\t\t\tobjectType   = ";
-                message << vk::to_string(static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType)) << "\n";
-                message << "\t\t\tobjectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
-                if (pCallbackData->pObjects[i].pObjectName)
-                {
-                    message << "\t\t\t" << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
-                }
-            }
-        }
-
-        std::cout << message.str() << '\n';
 
         return false;
     }
@@ -152,14 +118,14 @@ namespace vlb {
         auto c = vk::StructureChain<
             vk::DeviceCreateInfo,
             vk::PhysicalDeviceFeatures2,
-            vk::PhysicalDeviceBufferDeviceAddressFeatures,
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHR>{
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+            vk::PhysicalDeviceVulkan12Features>{
                 deviceCreateInfo,
                 vk::PhysicalDeviceFeatures2(),
-                vk::PhysicalDeviceBufferDeviceAddressFeatures(),
                 vk::PhysicalDeviceRayTracingPipelineFeaturesKHR(),
-                vk::PhysicalDeviceAccelerationStructureFeaturesKHR()
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR(),
+                vk::PhysicalDeviceVulkan12Features()
             };
 
         this->physicalDevice.getFeatures2(&c.get<vk::PhysicalDeviceFeatures2>());

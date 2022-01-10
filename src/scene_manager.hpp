@@ -128,6 +128,7 @@ namespace vlb {
             Scene loadMaterials();
             Scene loadNodes();
             Scene buildAccelerationStructures();
+            Scene createDescriptorSetLayout();
             Scene loadCameras();
 
             // Camera management
@@ -137,12 +138,14 @@ namespace vlb {
             Camera       getCamera(int index = -1);
             const int    getCameraIndex();
             const size_t getCamerasCount();
+            vk::DescriptorSetLayout getDescriptorSetLayout();
 
             // TODO MAKE PRIVATE
             AccelerationStructure tlas;
             Application::Buffer   instanceInfoBuffer;
             Application::Buffer   materialBuffer;
             size_t materialsCount;
+            std::vector<Texture>  textures;
 
         private:
 
@@ -166,8 +169,9 @@ namespace vlb {
             tinygltf::Model    model;
             tinygltf::TinyGLTF loader;
 
+            vk::UniqueDescriptorSetLayout descriptorSetLayout;
+
             std::vector<Sampler>  samplers;
-            std::vector<Texture>  textures;
             std::vector<Node>     nodes;
             std::vector<Node>     linearNodes;
             std::vector<Camera>   cameras;
