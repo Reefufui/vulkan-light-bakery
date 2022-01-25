@@ -1,18 +1,17 @@
 // created in 2021 by Andrey Treefonov https://github.com/Reefufui
 
 #include "scene_manager.hpp"
+#include "structures.h"
 
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
-#include <glm/gtx/string_cast.hpp> // Debug
+//#include <glm/gtx/string_cast.hpp> // Debug
 
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
 #include <utility>
-
-#include "structures.h"
 
 namespace vlb {
 
