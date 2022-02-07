@@ -82,7 +82,7 @@ namespace vlb {
         layouts.push_back(this->sceneManager.getCamera()->getDescriptorSetLayout());
 
         std::vector<vk::PushConstantRange> pushConstants{
-            { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(shader::PushConstant) }
+            { vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(shader::PushConstant) }
         };
 
         this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
@@ -358,11 +358,13 @@ namespace vlb {
                 nullptr
                 );
 
-        shader::PushConstant pc { this->ui.getLightIntensity() };
+        static int frameNumber = 0;
+        shader::PushConstant pc { this->ui.getLightIntensity(), static_cast<int>(frameNumber++) };
+        frameNumber = frameNumber > 5 ? 0 : frameNumber;
 
         commandBuffer->pushConstants(
                 this->pipelineLayout.get(),
-                vk::ShaderStageFlagBits::eClosestHitKHR,
+                vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR,
                 0, sizeof(pc), &pc
                 );
 

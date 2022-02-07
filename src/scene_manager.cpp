@@ -17,12 +17,12 @@ namespace vlb {
 
     Scene_t::Scene_t(std::string& filename)
     {
-        std::string err;
-        std::string warn;
+        std::string err{};
+        std::string warn{};
 
-        std::filesystem::path filePath = filename;
+        std::filesystem::path filePath{filename};
         this->path = filename;
-        this->name  = filePath.stem();
+        this->name = filePath.stem();
 
         bool loaded{false};
         if (filePath.extension() == ".gltf")
@@ -467,27 +467,57 @@ namespace vlb {
     {
         shader::Factors factors{};
 
-        auto has = [&gltfMaterial](std::string&& label) -> bool
+        auto hasAdditionalValue = [&gltfMaterial](std::string&& label) -> bool
+        {
+            return gltfMaterial.additionalValues.find(label) != gltfMaterial.additionalValues.end();
+        };
+
+        auto hasValue = [&gltfMaterial](std::string&& label) -> bool
         {
             return gltfMaterial.values.find(label) != gltfMaterial.values.end();
         };
 
-        if (has("baseColorFactor"))
+        if (hasAdditionalValue("alphaMode"))
+        {
+            const tinygltf::Parameter& param{gltfMaterial.additionalValues["alphaMode"]};
+
+            if (param.string_value == "BLEND")
+            {
+                //material.alpha.mode = Material::Alpha::Mode::eBlend;
+            }
+            else if (param.string_value == "MASK")
+            {
+                factors.alphaCutoff = 0.5f;
+                //material.alpha.mode = Material::Alpha::Mode::eMask;
+            }
+            else
+            {
+                //material.alpha.mode = Material::Alpha::Mode::eOpaque;
+            }
+
+        }
+
+        if (hasAdditionalValue("alphaCutoff"))
+        {
+            factors.alphaCutoff = static_cast<float>(gltfMaterial.additionalValues["alphaCutoff"].Factor());
+        }
+
+        if (hasValue("baseColorFactor"))
         {
             factors.baseColor = glm::make_vec4(gltfMaterial.values["baseColorFactor"].ColorFactor().data());
         }
 
-        if (has("metallicFactor"))
+        if (hasValue("metallicFactor"))
         {
             factors.metallic = static_cast<float>(gltfMaterial.values["metallicFactor"].Factor());
         }
 
-        if (has("roughnessFactor"))
+        if (hasValue("roughnessFactor"))
         {
             factors.roughness = static_cast<float>(gltfMaterial.values["roughnessFactor"].Factor());
         }
 
-        if (has("emissiveFactor"))
+        if (hasValue("emissiveFactor"))
         {
             factors.emissive = glm::vec4(glm::make_vec3(gltfMaterial.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
         }

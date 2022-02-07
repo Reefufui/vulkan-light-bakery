@@ -46,7 +46,7 @@ void main()
 
     const vec4 bcCoords = vec4(1.0f - attribs.x - attribs.y, attribs.x, attribs.y, 1.0f);
 
-    // Computing the coordinates of the hit position
+    // Computing the  coordinates of the hit position
     const vec3 pos      = v0.position.xyz * bcCoords.x + v1.position.xyz * bcCoords.y + v2.position.xyz * bcCoords.z;
     const vec3 worldPos = vec3(gl_ObjectToWorldEXT * vec4(pos, 1.0));
 

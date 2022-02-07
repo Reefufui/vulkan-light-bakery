@@ -18,6 +18,7 @@ namespace shader {
         PushConstant
         {
             float lightIntensity;
+            int frameNumber;
         }
 #ifndef __cplusplus
     constants
@@ -47,7 +48,8 @@ namespace shader {
         vec3  specular;
         float metallic;
         float roughness;
-        float dummy[3]; // alignment
+        float alphaCutoff;
+        float dummy[2]; // alignment
     };
 
 #ifdef __cplusplus
