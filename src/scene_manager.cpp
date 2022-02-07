@@ -1,31 +1,28 @@
 // created in 2021 by Andrey Treefonov https://github.com/Reefufui
 
 #include "scene_manager.hpp"
+#include "structures.h"
 
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
-#include <glm/gtx/string_cast.hpp> // Debug
+//#include <glm/gtx/string_cast.hpp> // Debug
 
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
 #include <utility>
 
-namespace shader {
-#include "structures.h"
-}
-
 namespace vlb {
 
     Scene_t::Scene_t(std::string& filename)
     {
-        std::string err;
-        std::string warn;
+        std::string err{};
+        std::string warn{};
 
-        std::filesystem::path filePath = filename;
+        std::filesystem::path filePath{filename};
         this->path = filename;
-        this->name  = filePath.stem();
+        this->name = filePath.stem();
 
         bool loaded{false};
         if (filePath.extension() == ".gltf")
@@ -45,12 +42,10 @@ namespace vlb {
         {
             printf("Warn: %s", warn.c_str());
         }
-
         if (!err.empty())
         {
             printf("Err: %s", err.c_str());
         }
-
         if (!loaded)
         {
             throw std::runtime_error("Failed to parse glTF");
@@ -70,6 +65,44 @@ namespace vlb {
         this->swapchainImagesCount = info.swapchainImagesCount;
 
         return shared_from_this();
+    }
+
+    Scene Scene_t::createDescriptorSetLayout()
+    {
+        std::vector<vk::DescriptorSetLayoutBinding> bindings{
+            vk::DescriptorSetLayoutBinding{}
+            .setBinding(0)
+                .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(1)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(2)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(3)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setDescriptorCount(this->textures.size() ? this->textures.size() : 1)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
+        };
+
+        this->descriptorSetLayout = this->device.createDescriptorSetLayoutUnique(
+                vk::DescriptorSetLayoutCreateInfo{}
+                .setBindings(bindings)
+                );
+
+        return shared_from_this();
+    }
+
+    vk::DescriptorSetLayout Scene_t::getDescriptorSetLayout()
+    {
+        return this->descriptorSetLayout.get();
     }
 
     auto Scene_t::Primitive_t::getGeometry()
@@ -92,33 +125,6 @@ namespace vlb {
         range.setPrimitiveCount(static_cast<uint32_t>(this->indexCount) / 3);
 
         return std::make_pair(geometry, range);
-    }
-
-    glm::mat4 Scene_t::Node_t::localMatrix()
-    {
-        glm::mat4 matrix(1.0f);
-        matrix = glm::translate(matrix, this->translation);
-        matrix = matrix * this->rotation;
-        matrix = glm::scale(matrix, this->scale);
-        return matrix * this->matrix;
-    }
-
-    VkTransformMatrixKHR Scene_t::Node_t::getMatrix()
-    {
-        glm::mat4 matrix = localMatrix();
-
-        Node p = this->parent;
-        while (p)
-        {
-            matrix = p->localMatrix() * matrix;
-            p = p->parent;
-        }
-
-        matrix = glm::transpose(matrix);
-
-        VkTransformMatrixKHR transfromMatrix;
-        memcpy(&transfromMatrix, &matrix, sizeof(VkTransformMatrixKHR));
-        return transfromMatrix;
     }
 
     auto Scene_t::loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label)
@@ -249,7 +255,7 @@ namespace vlb {
 
         as->address = this->device.getAccelerationStructureAddressKHR({as->handle.get()});
 
-        return std::move(as);
+        return as;
     }
 
     Scene Scene_t::buildAccelerationStructures()
@@ -294,7 +300,7 @@ namespace vlb {
         vk::AccelerationStructureBuildRangeInfoKHR range{};
         range.setPrimitiveCount(static_cast<uint32_t>(instances.size()));
 
-        Application::Buffer instanceBuffer     = toBuffer(std::move(instances));
+        Application::Buffer instanceBuffer = toBuffer(std::move(instances));
 
         vk::AccelerationStructureGeometryInstancesDataKHR data{};
         data
@@ -312,23 +318,47 @@ namespace vlb {
         return shared_from_this();
     }
 
+    VkTransformMatrixKHR Scene_t::Node_t::getMatrix()
+    {
+        glm::mat4 matrix = this->matrix;
+
+        Node p = this->parent;
+        while (p)
+        {
+            matrix = p->matrix * matrix;
+            p = p->parent;
+        }
+
+        matrix = glm::transpose(matrix);
+
+        VkTransformMatrixKHR transfromMatrix;
+        memcpy(&transfromMatrix, &matrix, sizeof(VkTransformMatrixKHR));
+        return transfromMatrix;
+    }
+
+    glm::mat4 Scene_t::loadMatrix(const tinygltf::Node& gltfNode)
+    {
+        glm::vec3 translation = gltfNode.translation.size() != 3 ? glm::dvec3(0.0) : glm::make_vec3(gltfNode.translation.data());
+        glm::mat4 rotation    = gltfNode.rotation.size() != 4 ? glm::dmat4(glm::dquat{}) : glm::dmat4(glm::make_quat(gltfNode.rotation.data()));
+        glm::vec3 scale       = gltfNode.scale.size() != 3 ? glm::dvec3(1.0f) : glm::make_vec3(gltfNode.scale.data());
+        glm::mat4 transform   = gltfNode.matrix.size() != 16 ? glm::dmat4(1.0f) : glm::make_mat4x4(gltfNode.matrix.data());
+
+        glm::mat4 matrix(1.0f);
+        matrix = glm::translate(matrix, translation);
+        matrix = matrix * rotation;
+        matrix = glm::scale(matrix, scale);
+        matrix = matrix * transform;
+
+        return matrix;
+    }
+
     void Scene_t::loadNode(const Node parent, const tinygltf::Node& gltfNode, const uint32_t nodeIndex)
     {
         Node node{new Node_t()};
         node->parent = parent;
         node->index  = nodeIndex;
 
-        node->translation = gltfNode.translation.size() != 3 ? glm::dvec3(0.0)
-            : glm::make_vec3(gltfNode.translation.data());
-
-        node->rotation = gltfNode.rotation.size() != 4 ? glm::dmat4(glm::dquat{})
-            : glm::dmat4(glm::make_quat(gltfNode.rotation.data()));
-
-        node->scale = gltfNode.scale.size() != 3 ? glm::dvec3(1.0f)
-            : glm::make_vec3(gltfNode.scale.data());
-
-        node->matrix = gltfNode.matrix.size() != 16 ? glm::dmat4(1.0f)
-            : glm::make_mat4x4(gltfNode.matrix.data());
+        node->matrix = loadMatrix(gltfNode);
 
         if (gltfNode.mesh > -1)
         {
@@ -341,7 +371,7 @@ namespace vlb {
                 auto indices  = fetchIndices(gltfPrimitive);
 
                 Primitive primitive{new Primitive_t()};
-                primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materials.size() - 1;
+                primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materialsCount - 1;
                 primitive->vertexCount   = vertices.size();
                 primitive->indexCount    = indices.size();
                 primitive->vertexBuffer  = toBuffer(std::move(vertices));
@@ -433,145 +463,166 @@ namespace vlb {
         return shared_from_this();
     }
 
-    Scene Scene_t::loadMaterials()
+    shader::Factors loadFactors(tinygltf::Material &gltfMaterial)
     {
-        auto getTexture = [this](tinygltf::Material& material, std::string&& label)
+        shader::Factors factors{};
+
+        auto hasAdditionalValue = [&gltfMaterial](std::string&& label) -> bool
         {
-            if (material.values.find(label) != material.values.end())
+            return gltfMaterial.additionalValues.find(label) != gltfMaterial.additionalValues.end();
+        };
+
+        auto hasValue = [&gltfMaterial](std::string&& label) -> bool
+        {
+            return gltfMaterial.values.find(label) != gltfMaterial.values.end();
+        };
+
+        if (hasAdditionalValue("alphaMode"))
+        {
+            const tinygltf::Parameter& param{gltfMaterial.additionalValues["alphaMode"]};
+
+            if (param.string_value == "BLEND")
             {
-                auto& value = material.values[label];
-
-                Texture texture      = this->textures[value.TextureIndex()];
-                uint8_t textureCoord = value.TextureTexCoord();
-
-                return std::make_tuple(texture, textureCoord);
+                //material.alpha.mode = Material::Alpha::Mode::eBlend;
+            }
+            else if (param.string_value == "MASK")
+            {
+                factors.alphaCutoff = 0.5f;
+                //material.alpha.mode = Material::Alpha::Mode::eMask;
             }
             else
             {
-                return std::make_tuple(Texture(nullptr), uint8_t(-1));
+                //material.alpha.mode = Material::Alpha::Mode::eOpaque;
+            }
+
+        }
+
+        if (hasAdditionalValue("alphaCutoff"))
+        {
+            factors.alphaCutoff = static_cast<float>(gltfMaterial.additionalValues["alphaCutoff"].Factor());
+        }
+
+        if (hasValue("baseColorFactor"))
+        {
+            factors.baseColor = glm::make_vec4(gltfMaterial.values["baseColorFactor"].ColorFactor().data());
+        }
+
+        if (hasValue("metallicFactor"))
+        {
+            factors.metallic = static_cast<float>(gltfMaterial.values["metallicFactor"].Factor());
+        }
+
+        if (hasValue("roughnessFactor"))
+        {
+            factors.roughness = static_cast<float>(gltfMaterial.values["roughnessFactor"].Factor());
+        }
+
+        if (hasValue("emissiveFactor"))
+        {
+            factors.emissive = glm::vec4(glm::make_vec3(gltfMaterial.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
+        }
+
+        if (gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness") != gltfMaterial.extensions.end())
+        {
+            auto ext = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
+
+            if (ext->second.Has("diffuseFactor"))
+            {
+                auto factor = ext->second.Get("diffuseFactor");
+                for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+                {
+                    auto val = factor.Get(i);
+                    factors.diffuse[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+                }
+            }
+            if (ext->second.Has("specularFactor"))
+            {
+                auto factor = ext->second.Get("specularFactor");
+                for (uint32_t i = 0; i < factor.ArrayLen(); i++)
+                {
+                    auto val = factor.Get(i);
+                    factors.specular[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
+                }
+            }
+        }
+
+        return factors;
+    }
+
+    shader::Textures matchTextures(tinygltf::Material &gltfMaterial)
+    {
+        auto getTexture = [&gltfMaterial](std::string&& label) -> shader::Texture
+        {
+            if (gltfMaterial.values.find(label) != gltfMaterial.values.end())
+            {
+                auto& value = gltfMaterial.values[label];
+
+                shader::Texture texture{};
+                texture.index    = static_cast<float>(value.TextureIndex());
+                texture.coordSet = static_cast<int>(value.TextureTexCoord());
+
+                return texture;
+            }
+            else
+            {
+                return shader::Texture{};
             }
         };
 
+        shader::Textures textures{};
+        textures.normal            = getTexture("normalTexture");
+        textures.occlusion         = getTexture("occlusionTexture");
+        textures.baseColor         = getTexture("baseColorTexture");
+        textures.metallicRoughness = getTexture("metallicRoughnessTexture");
+        textures.emissive          = getTexture("emissiveTexture");
+
+        auto getTextureEXT = [](auto& ext, std::string&& label) -> shader::Texture
+        {
+            if (ext->second.Has(label))
+            {
+                auto index    = ext->second.Get(label).Get("index");
+                auto coordSet = ext->second.Get(label).Get("texCoord");
+
+                shader::Texture texture{};
+                index.Get(texture.index);
+                coordSet.Get(texture.coordSet);
+
+                return texture;
+            }
+            else
+            {
+                return shader::Texture{};
+            }
+        };
+
+        if (gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness") != gltfMaterial.extensions.end())
+        {
+            auto ext = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
+            textures.specularEXT = getTextureEXT(ext, "specularGlossinessTexture");
+            textures.diffuseEXT  = getTextureEXT(ext, "diffuseTexture");
+        }
+
+        return textures;
+    }
+
+    Scene Scene_t::loadMaterials()
+    {
+        std::vector<shader::Material> materials;
+
         for (tinygltf::Material &gltfMaterial : this->model.materials)
         {
-            Material material{};
+            shader::Material material{};
 
-            if (gltfMaterial.additionalValues.find("alphaMode") != gltfMaterial.additionalValues.end())
-            {
-                tinygltf::Parameter& param = gltfMaterial.additionalValues["alphaMode"];
-
-                if (param.string_value == "BLEND")
-                {
-                    material.alpha.mode = Material::Alpha::Mode::eBlend;
-                }
-                else if (param.string_value == "MASK")
-                {
-                    material.alpha.cutOff = 0.5f;
-                    material.alpha.mode = Material::Alpha::Mode::eMask;
-                }
-                else
-                {
-                    material.alpha.mode = Material::Alpha::Mode::eOpaque;
-                }
-
-                if (gltfMaterial.additionalValues.find("alphaCutoff") != gltfMaterial.additionalValues.end())
-                {
-                    material.alpha.cutOff = static_cast<float>(gltfMaterial.additionalValues["alphaCutoff"].Factor());
-                }
-            }
-
-            if (gltfMaterial.values.find("baseColorFactor") != gltfMaterial.values.end())
-            {
-                material.factor.baseColor = glm::make_vec4(gltfMaterial.values["baseColorFactor"].ColorFactor().data());
-            }
-
-            if (gltfMaterial.values.find("metallicFactor") != gltfMaterial.values.end())
-            {
-                material.factor.metallic = static_cast<float>(gltfMaterial.values["metallicFactor"].Factor());
-            }
-
-            if (gltfMaterial.values.find("roughnessFactor") != gltfMaterial.values.end())
-            {
-                material.factor.roughness = static_cast<float>(gltfMaterial.values["roughnessFactor"].Factor());
-            }
-
-            if (gltfMaterial.additionalValues.find("emissiveFactor") != gltfMaterial.additionalValues.end())
-            {
-                material.factor.emissive = glm::vec4(glm::make_vec3(gltfMaterial.additionalValues["emissiveFactor"].ColorFactor().data()), 1.0);
-            }
-
-            {
-                auto[texture, textureCoord] = getTexture(gltfMaterial, "normalTexture");
-                material.texture.normal     = texture;
-                material.coordSet.normal = textureCoord;
-            }
-
-            {
-                auto[texture, textureCoord] = getTexture(gltfMaterial, "occlusionTexture");
-                material.texture.occlusion     = texture;
-                material.coordSet.occlusion = textureCoord;
-            }
-
-            {
-                auto[texture, textureCoord] = getTexture(gltfMaterial, "baseColorTexture");
-                material.texture.baseColor     = texture;
-                material.coordSet.baseColor = textureCoord;
-            }
-
-            {
-                auto[texture, textureCoord] = getTexture(gltfMaterial, "metallicRoughnessTexture");
-                material.texture.metallicRoughness     = texture;
-                material.coordSet.metallicRoughness = textureCoord;
-            }
-
-            {
-                auto[texture, textureCoord] = getTexture(gltfMaterial, "emissiveTexture");
-                material.texture.emissive     = texture;
-                material.coordSet.emissive = textureCoord;
-            }
-
-            if (gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness") != gltfMaterial.extensions.end())
-            {
-                auto ext = gltfMaterial.extensions.find("KHR_materials_pbrSpecularGlossiness");
-
-                if (ext->second.Has("specularGlossinessTexture"))
-                {
-                    auto index = ext->second.Get("specularGlossinessTexture").Get("index");
-                    material.texture.specularEXT  = this->textures[index.Get<int>()];
-                    material.coordSet.specularEXT = ext->second.Get("specularGlossinessTexture").Get("texCoord").Get<int>();
-                }
-
-                if (ext->second.Has("diffuseTexture"))
-                {
-                    auto index = ext->second.Get("diffuseTexture").Get("index");
-                    material.texture.diffuseEXT = this->textures[index.Get<int>()];
-                    material.coordSet.diffuseEXT = ext->second.Get("diffuseTexture").Get("texCoord").Get<int>();
-                }
-
-                if (ext->second.Has("diffuseFactor"))
-                {
-                    auto factor = ext->second.Get("diffuseFactor");
-                    for (uint32_t i = 0; i < factor.ArrayLen(); i++)
-                    {
-                        auto val = factor.Get(i);
-                        material.factor.diffuseEXT[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
-                    }
-                }
-                if (ext->second.Has("specularFactor"))
-                {
-                    auto factor = ext->second.Get("specularFactor");
-                    for (uint32_t i = 0; i < factor.ArrayLen(); i++)
-                    {
-                        auto val = factor.Get(i);
-                        material.factor.specularEXT[i] = val.IsNumber() ? (float)val.Get<double>() : (float)val.Get<int>();
-                    }
-                }
-            }
+            material.factors  = loadFactors(gltfMaterial);
+            material.textures = matchTextures(gltfMaterial);
 
             materials.push_back(material);
         }
 
-        materials.push_back(Material());
+        materials.push_back(shader::Material{});
+
+        this->materialsCount = materials.size();
+        this->materialBuffer = toBuffer(std::move(materials));
 
         return shared_from_this();
     }
@@ -772,7 +823,7 @@ namespace vlb {
                     .setImage(texture->image.handle.get())
                     .setViewType(vk::ImageViewType::e2D)
                     .setFormat(vk::Format::eB8G8R8A8Unorm)
-                    .setComponents({ vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eA })
+                    .setComponents({ vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eA })
                     .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
                     );
 
@@ -799,6 +850,7 @@ namespace vlb {
         scene->loadMaterials();
         scene->loadNodes();
         scene->buildAccelerationStructures();
+        scene->createDescriptorSetLayout();
 
         // Instead of calling loadCameras() to fetch cameras from glTF file we load cameras from ci.
         assert(ci.cameras.size());
@@ -835,6 +887,7 @@ namespace vlb {
         scene->loadMaterials();
         scene->loadNodes();
         scene->buildAccelerationStructures();
+        scene->createDescriptorSetLayout();
         scene->loadCameras();
         scene->setCameraIndex(0);
         scene->setViewingFrustumForCameras(this->frustum);
@@ -929,7 +982,7 @@ namespace vlb {
 
     SceneManager::~SceneManager()
     {
-        while (scenes.size() > 0)
+        while (scenes.size())
         {
             popScene();
         }

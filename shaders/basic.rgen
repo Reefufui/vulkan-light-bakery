@@ -1,5 +1,10 @@
 #version 460
 #extension GL_EXT_ray_tracing : enable
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+#include "random.glsl"
+#include "structures.h"
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 1, binding = 0, rgba8) uniform image2D image;
@@ -12,22 +17,48 @@ layout(set = 2, binding = 0) uniform CameraUBO {
 
 layout(location = 0) rayPayloadEXT vec3 payLoad;
 
+#define NBSAMPLES 10
+
 void main()
 {
-    const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-    const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
-    vec2 d = inUV * 2.0 - 1.0;
+    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, constants.frameNumber);
+    vec3 hitValue = vec3(0.0f);
 
-    vec4 origin = camera.viewInv * vec4(0, 0, 0, 1);
-    vec4 target = camera.projectionInv * vec4(d.x, d.y, 1, 1);
-    vec4 direction = camera.viewInv * vec4(normalize(target.xyz), 0);
+    for (int smpl = 0; smpl < NBSAMPLES; ++smpl)
+    {
+        float r1 = rnd(seed);
+        float r2 = rnd(seed);
+        vec2 subpixel_jitter = constants.frameNumber == 0 ? vec2(0.5f, 0.5f) : vec2(r1, r2);
 
-    float tmin = 0.001;
-    float tmax = 10000.0;
+        const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + subpixel_jitter;
+        const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
+        vec2 d = inUV * 2.0 - 1.0;
 
-    payLoad = vec3(0.f);
+        vec4 origin = camera.viewInv * vec4(0, 0, 0, 1);
+        vec4 target = camera.projectionInv * vec4(d.x, d.y, 1, 1);
+        vec4 direction = camera.viewInv * vec4(normalize(target.xyz), 0);
 
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
+        float tmin = 0.001;
+        float tmax = 10000.0;
 
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payLoad, 0.0));
+        payLoad = vec3(0.f);
+
+        traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
+
+        hitValue += payLoad;
+    }
+
+    hitValue = hitValue / NBSAMPLES;
+
+    if (constants.frameNumber > 0)
+    {
+        float a         = 0.7;
+        vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitValue, a), 0.0f));
+    }
+    else
+    {
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0f));
+    }
 }
+
