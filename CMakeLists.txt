@@ -69,6 +69,7 @@ if (KERNEL_COMPILER)
         "shaders/*.rgen"
         "shaders/*.rchit"
         "shaders/*.rmiss"
+        "shaders/*.rahit"
         )
     foreach(GLSL ${GLSL_SOURCE_FILES})
         get_filename_component(FILE_NAME ${GLSL} NAME)

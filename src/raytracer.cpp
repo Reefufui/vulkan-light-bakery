@@ -360,7 +360,6 @@ namespace vlb {
 
         static int frameNumber = 0;
         shader::PushConstant pc { this->ui.getLightIntensity(), static_cast<int>(frameNumber++) };
-        frameNumber = frameNumber > 5 ? 0 : frameNumber;
 
         commandBuffer->pushConstants(
                 this->pipelineLayout.get(),
