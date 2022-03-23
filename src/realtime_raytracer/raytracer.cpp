@@ -96,6 +96,7 @@ namespace vlb {
             eRaygen,
             eMiss,
             eClosestHit,
+            eShadow,
             eShaderGroupCount
         };
         std::array<vk::PipelineShaderStageCreateInfo, StageIndices::eShaderGroupCount> shaderStages{};
@@ -148,13 +149,28 @@ namespace vlb {
                 .setIntersectionShader(VK_SHADER_UNUSED_KHR)
                 );
 
+        shaderModules.push_back(Application::createShaderModule("shaders/shadow.rmiss.spv"));
+        shaderStages[StageIndices::eShadow] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eShadow]
+            .setStage(vk::ShaderStageFlagBits::eMissKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(
+                vk::RayTracingShaderGroupCreateInfoKHR{}
+                .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+                .setGeneralShader(StageIndices::eShadow)
+                .setClosestHitShader(VK_SHADER_UNUSED_KHR)
+                .setAnyHitShader(VK_SHADER_UNUSED_KHR)
+                .setIntersectionShader(VK_SHADER_UNUSED_KHR)
+                );
+
         this->shaderGroupsCount = static_cast<uint32_t>(StageIndices::eShaderGroupCount);
 
         auto[result, p] = this->device.get().createRayTracingPipelineKHRUnique(nullptr, nullptr,
                 vk::RayTracingPipelineCreateInfoKHR{}
                 .setStages(shaderStages)
                 .setGroups(shaderGroups)
-                .setMaxPipelineRayRecursionDepth(1)
+                .setMaxPipelineRayRecursionDepth(2)
                 .setLayout(this->pipelineLayout.get())
                 );
 
@@ -196,7 +212,7 @@ namespace vlb {
             throw std::runtime_error("failed to get ray tracing shader group handles");
         }
 
-        std::vector<std::string> keys = { "rayGen", "miss", "hit" };
+        std::vector<std::string> keys = { "rayGen", "miss", "hit", "shadow" };
         for (auto i{0}; i < keys.size(); ++i)
         {
             sbt.storage.push_back(createBuffer(handleSize, sbtBufferUsageFlags, sbtMemoryProperty, shaderHandles.data() + i * handleSizeAligned));
@@ -360,7 +376,6 @@ namespace vlb {
 
         static int frameNumber = 0;
         shader::PushConstant pc { this->ui.getLightIntensity(), static_cast<int>(frameNumber++) };
-        frameNumber = frameNumber > 5 ? 0 : frameNumber;
 
         commandBuffer->pushConstants(
                 this->pipelineLayout.get(),

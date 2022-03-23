@@ -176,6 +176,8 @@ namespace vlb {
             std::vector<Node>     linearNodes;
             std::vector<Camera>   cameras;
 
+            std::array<float, 6>  boundingBox{};
+
             int cameraIndex;
 
             void loadNode(const Node parent, const tinygltf::Node& node, const uint32_t nodeIndex);
