@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <utility>
+#include <array>
 
 namespace vlb {
 
@@ -74,7 +75,7 @@ namespace vlb {
             .setBinding(0)
                 .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
                 .setDescriptorCount(1)
-                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
+                .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR),
                 vk::DescriptorSetLayoutBinding{}
             .setBinding(1)
                 .setDescriptorType(vk::DescriptorType::eStorageBuffer)
@@ -153,6 +154,7 @@ namespace vlb {
         auto[uv0Buffer, uv0ByteStride, uv0ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_0");
         auto[uv1Buffer, uv1ByteStride, uv1ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_1");
 
+        std::array<float, 6> XxYyZzBoundingBox{};
 
         for (uint32_t v{}; v < vertexCount; ++v)
         {
@@ -160,9 +162,18 @@ namespace vlb {
             if (nrmBuffer) vertices[v].normal   = glm::normalize(glm::vec3(glm::make_vec3( &nrmBuffer[v * nrmByteStride])));
             if (uv0Buffer) vertices[v].uv0      = glm::make_vec2(                          &uv0Buffer[v * uv0ByteStride]);
             if (uv1Buffer) vertices[v].uv1      = glm::make_vec2(                          &uv1Buffer[v * uv1ByteStride]);
+
+            const glm::vec4 position = vertices[v].position;
+            XxYyZzBoundingBox[0] = std::max(position.x, XxYyZzBoundingBox[0]);
+            XxYyZzBoundingBox[1] = std::min(position.x, XxYyZzBoundingBox[1]);
+            XxYyZzBoundingBox[2] = std::max(position.y, XxYyZzBoundingBox[2]);
+            XxYyZzBoundingBox[3] = std::min(position.y, XxYyZzBoundingBox[3]);
+            XxYyZzBoundingBox[4] = std::max(position.z, XxYyZzBoundingBox[4]);
+            XxYyZzBoundingBox[5] = std::min(position.z, XxYyZzBoundingBox[5]);
         }
 
-        return std::move(vertices);
+
+        return std::pair(std::move(vertices), std::move(XxYyZzBoundingBox));
     }
 
     auto Scene_t::fetchIndices(const tinygltf::Primitive& primitive)
@@ -367,8 +378,15 @@ namespace vlb {
 
             for (const auto& gltfPrimitive: gltfMesh.primitives)
             {
-                auto vertices = fetchVertices(gltfPrimitive);
+                auto [vertices, XxYyZzBoundingBox] = fetchVertices(gltfPrimitive);
                 auto indices  = fetchIndices(gltfPrimitive);
+
+                boundingBox[0] = std::max(boundingBox[0], XxYyZzBoundingBox[0]);
+                boundingBox[1] = std::min(boundingBox[1], XxYyZzBoundingBox[1]);
+                boundingBox[2] = std::max(boundingBox[2], XxYyZzBoundingBox[2]);
+                boundingBox[3] = std::min(boundingBox[3], XxYyZzBoundingBox[3]);
+                boundingBox[4] = std::max(boundingBox[4], XxYyZzBoundingBox[4]);
+                boundingBox[5] = std::min(boundingBox[5], XxYyZzBoundingBox[5]);
 
                 Primitive primitive{new Primitive_t()};
                 primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materialsCount - 1;
@@ -636,6 +654,11 @@ namespace vlb {
         {
             const auto& node = this->model.nodes[nodeIndex];
             loadNode(nullptr, node, nodeIndex);
+        }
+
+        for (auto x : boundingBox)
+        {
+            std::cout << x << "\n";
         }
 
         return shared_from_this();

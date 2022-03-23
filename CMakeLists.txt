@@ -1,4 +1,3 @@
-# created in 2021 by Andrey Treefonov https://github.com/Reefufui
 
 project(VulkanLightBakery)
 cmake_minimum_required(VERSION 3.21)
@@ -21,24 +20,32 @@ set(CONAN_SYSTEM_INCLUDES ON)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(NO_OUTPUT_DIRS)
 
-include_directories(src src/vendor shaders)
+include_directories(src src/vendor src/baker shaders)
 
-add_executable(vklb
-    src/main.cpp
+add_library(core SHARED
     src/application.cpp
-    src/renderer.cpp
-    src/raytracer.cpp
     src/scene_manager.cpp
-    src/ui.cpp
     src/camera.cpp
-
     src/vendor/define_implementations.cpp
+    )
+
+add_executable(rtrt
+    src/realtime_raytracer/main.cpp
+    src/realtime_raytracer/renderer.cpp
+    src/realtime_raytracer/raytracer.cpp
+
+    src/realtime_raytracer/ui.cpp
     src/vendor/imgui_impl_glfw.cpp
     src/vendor/imgui_impl_vulkan.cpp
     src/vendor/imgui_stdlib.cpp
     )
 
-target_link_libraries(vklb ${CONAN_LIBS} -ldl)
+add_executable(baker
+    src/baker/main.cpp
+    )
+
+target_link_libraries(rtrt ${CONAN_LIBS} -ldl core)
+target_link_libraries(baker ${CONAN_LIBS} -ldl core)
 
 ##################
 ## ASSETS ########
@@ -82,7 +89,8 @@ if (KERNEL_COMPILER)
         list(APPEND SPIRV_BINARY_FILES ${SPIRV})
     endforeach(GLSL)
     add_custom_target(shaders DEPENDS ${SPIRV_BINARY_FILES})
-    add_dependencies(vklb shaders)
+    add_dependencies(rtrt shaders)
+    add_dependencies(baker shaders)
 else()
     message(CHECK_FAIL "missing")
     message(WARNING "MAKE SURE TO COMPILE SHADERS YOURSELF")

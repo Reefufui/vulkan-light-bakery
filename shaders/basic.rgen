@@ -17,7 +17,7 @@ layout(set = 2, binding = 0) uniform CameraUBO {
 
 layout(location = 0) rayPayloadEXT vec3 payLoad;
 
-#define NBSAMPLES 3
+#define NBSAMPLES 1
 
 void main()
 {
@@ -28,7 +28,7 @@ void main()
     {
         float r1 = rnd(seed);
         float r2 = rnd(seed);
-        vec2 subpixel_jitter = constants.frameNumber == 0 ? vec2(0.5f, 0.5f) : vec2(r1, r2);
+        vec2 subpixel_jitter = vec2(0.5f, 0.5f);//constants.frameNumber == 0 ? vec2(0.5f, 0.5f) : vec2(r1, r2);
 
         const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + subpixel_jitter;
         const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
@@ -50,5 +50,19 @@ void main()
 
     hitValue = hitValue / NBSAMPLES;
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0f));
+
+    /*
+    if (constants.frameNumber > 0)
+    {
+        float a         = 0.2;
+        vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitValue, a), 1.f));
+    }
+    else
+    {
+        // First frame, replace the value in the buffer
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 1.f));
+    }
+    */
 }
 
