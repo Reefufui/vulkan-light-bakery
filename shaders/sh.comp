@@ -1,0 +1,65 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+//#extension GL_ARB_separate_shader_objects : enable
+
+#include "hardcoded_sh_basis.h"
+
+#define WORKGROUP_SIZE 16
+#define PI 3.1415926538
+
+layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants
+{
+    int width;
+    int height;
+} constants;
+
+layout (set = 0, binding = 0)        uniform sampler2D environmentMap;
+layout (set = 0, binding = 1, rgba8) uniform image2D   debugImage;
+layout (set = 0, binding = 2)        buffer            buff { dvec3 coeffs[9]; };
+
+vec3 toVector(double phi, double theta)
+{
+    double r = sin(theta);
+    return vec3(r * cos(phi), r * sin(phi), cos(theta));
+}
+
+double u2phi(int u)
+{
+    return PI * double(u) + 2 * PI / constants.width;
+}
+
+double v2theta(int v)
+{
+    return PI * double(v) / 2 + PI / (2 * constants.height);
+}
+
+double calcWeight(ivec2 uv)
+{
+    double pixelArea  = (2.0 * PI / constants.width) * (PI / constants.height);
+    return pixelArea * sin(v2theta(uv.y));
+}
+
+void main()
+{
+    if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height)
+        return;
+
+    ivec2 uv = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+
+    vec3   dir    = toVector(u2phi(uv.x), v2theta(uv.y));
+    vec3   color  = texelFetch(environmentMap, uv, 0).xyz;
+    double weight = calcWeight(uv);
+
+    for (int l = 0; l < 3; ++l)
+    {
+        for (int m = -l; m < l + 1; ++m)
+        {
+            coeffs[l * (l + 1) + m] += weight * color * vec3(EvalSH(l, m, dir));
+        }
+    }
+}
+
