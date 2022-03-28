@@ -1,4 +1,3 @@
-
 project(VulkanLightBakery)
 cmake_minimum_required(VERSION 3.21)
 
@@ -77,6 +76,7 @@ if (KERNEL_COMPILER)
         "shaders/*.rchit"
         "shaders/*.rmiss"
         "shaders/*.rahit"
+        "shaders/*.comp"
         )
     foreach(GLSL ${GLSL_SOURCE_FILES})
         get_filename_component(FILE_NAME ${GLSL} NAME)

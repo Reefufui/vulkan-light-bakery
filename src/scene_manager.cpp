@@ -106,6 +106,11 @@ namespace vlb {
         return this->descriptorSetLayout.get();
     }
 
+    std::array<glm::vec3, 8> Scene_t::getBoundingBox()
+    {
+        return this->boundingBox;
+    }
+
     auto Scene_t::Primitive_t::getGeometry()
     {
         vk::AccelerationStructureGeometryTrianglesDataKHR data{};
@@ -381,12 +386,12 @@ namespace vlb {
                 auto [vertices, XxYyZzBoundingBox] = fetchVertices(gltfPrimitive);
                 auto indices  = fetchIndices(gltfPrimitive);
 
-                boundingBox[0] = std::max(boundingBox[0], XxYyZzBoundingBox[0]);
-                boundingBox[1] = std::min(boundingBox[1], XxYyZzBoundingBox[1]);
-                boundingBox[2] = std::max(boundingBox[2], XxYyZzBoundingBox[2]);
-                boundingBox[3] = std::min(boundingBox[3], XxYyZzBoundingBox[3]);
-                boundingBox[4] = std::max(boundingBox[4], XxYyZzBoundingBox[4]);
-                boundingBox[5] = std::min(boundingBox[5], XxYyZzBoundingBox[5]);
+                this->XxYyZz[0] = std::max(this->XxYyZz[0], XxYyZzBoundingBox[0]);
+                this->XxYyZz[1] = std::min(this->XxYyZz[1], XxYyZzBoundingBox[1]);
+                this->XxYyZz[2] = std::max(this->XxYyZz[2], XxYyZzBoundingBox[2]);
+                this->XxYyZz[3] = std::min(this->XxYyZz[3], XxYyZzBoundingBox[3]);
+                this->XxYyZz[4] = std::max(this->XxYyZz[4], XxYyZzBoundingBox[4]);
+                this->XxYyZz[5] = std::min(this->XxYyZz[5], XxYyZzBoundingBox[5]);
 
                 Primitive primitive{new Primitive_t()};
                 primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materialsCount - 1;
@@ -656,7 +661,7 @@ namespace vlb {
             loadNode(nullptr, node, nodeIndex);
         }
 
-        for (auto x : boundingBox)
+        for (auto x : this->XxYyZz)
         {
             std::cout << x << "\n";
         }

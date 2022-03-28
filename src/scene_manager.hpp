@@ -131,6 +131,8 @@ namespace vlb {
             Scene createDescriptorSetLayout();
             Scene loadCameras();
 
+            std::array<glm::vec3, 8> getBoundingBox();
+
             // Camera management
             Scene setCameraIndex(int cameraIndex);
             Scene setViewingFrustumForCameras(ViewingFrustum frustum);
@@ -176,7 +178,8 @@ namespace vlb {
             std::vector<Node>     linearNodes;
             std::vector<Camera>   cameras;
 
-            std::array<float, 6>  boundingBox{};
+            std::array<float, 6> XxYyZz{};
+            std::array<glm::vec3, 8> boundingBox{};
 
             int cameraIndex;
 
