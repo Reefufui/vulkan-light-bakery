@@ -3,6 +3,9 @@
 #include <iostream>
 #include <string>
 
+#include <stb_image.h>
+#include <stb_image_write.h>
+
 #include "application.hpp"
 #include "scene_manager.hpp"
 
@@ -41,6 +44,7 @@ namespace vlb
             Application::Image  envMap;
             vk::Format          envMapFormat;
             vk::Extent3D        envMapExtent;
+            unsigned char*      testPixels;
 
         public:
             EnvMapGenerator()
@@ -66,8 +70,44 @@ namespace vlb
                 this->commandPool.transfer = info.transferCommandPool ? info.transferCommandPool : info.graphicsCommandPool;
             }
 
+            void loadDebugMapFromPNG(const char* filename)
+            {
+                int width{};
+                int height{};
+                int texChannels{};
+
+                stbi_uc* pixels{};
+                pixels = stbi_load(filename, &width, &height, &texChannels, STBI_rgb_alpha);
+
+                if (!pixels)
+                {
+                    throw std::runtime_error(std::string("Could not load texture: ") + std::string(filename));
+                }
+
+                this->envMapExtent.width  = width;
+                this->envMapExtent.height = height;
+
+                this->testPixels = new unsigned char[width * height * 4];
+                memcpy(testPixels, pixels, width * height * 4);
+                stbi_image_free(pixels);
+
+                this->envMap = Application::createImage(this->device, this->physicalDevice, this->envMapFormat, this->envMapExtent,
+                        this->commandPool.transfer, this->queue.transfer);
+
+                stbi_write_png("result.png", this->envMapExtent.width, this->envMapExtent.height, 4, (void*)testPixels, this->envMapExtent.width * 4);
+            }
+
+            int getTestMap(const char* filename)
+            {
+                loadDebugMapFromPNG("test_env_map.jpg");
+
+                return 0;
+            }
+
             Application::Image& createAndGetImage(vk::Format imageFormat, vk::Extent3D imageExtent)
             {
+                this->envMapFormat = imageFormat;
+                this->envMapExtent = imageExtent;
                 this->envMap = Application::createImage(this->device, this->physicalDevice, imageFormat, imageExtent,
                         this->commandPool.transfer, this->queue.transfer);
                 return this->envMap;
@@ -79,10 +119,31 @@ namespace vlb
                 //
                 return 0;
             }
+
     };
 
     class LightBaker : public Application
     {
+        private:
+            struct PushConstant
+            {
+                uint32_t width = 1000;
+                uint32_t height = 1000;
+            } pushConstants;
+
+            EnvMapGenerator envMapGenerator;
+
+            float                  probeSpacingDistance;
+            std::vector<glm::vec3> probePositions;
+            Application::Buffer    SHCoeffs;
+
+            vk::UniqueDescriptorPool      descriptorPool;
+            vk::UniqueDescriptorSet       descriptorSet;
+            vk::UniqueDescriptorSetLayout descriptorSetLayout;
+            vk::UniquePipeline            pipeline;
+            vk::UniquePipelineCache       pipelineCache;
+            vk::UniquePipelineLayout      pipelineLayout;
+
         public:
             LightBaker(std::string& sceneName)
             {
@@ -140,8 +201,8 @@ namespace vlb
                 vk::BufferUsageFlags    usg{ eStorageBuffer };
                 vk::MemoryPropertyFlags mem{ eHostVisible | eHostCoherent };
 
-                double init[9 * 3] = {0};
-                Buffer SHCoeffs = createBuffer(9 * 3 * sizeof(double), usg, mem, init);
+                float init[16 * 3] = {0};
+                this->SHCoeffs = createBuffer(16 * 3 * sizeof(float), usg, mem, init);
 
                 // POOL
                 std::vector<vk::DescriptorPoolSize> poolSizes = {
@@ -179,13 +240,13 @@ namespace vlb
 
                 // DESCRIPOR
                 this->descriptorSet = std::move(this->device.get().allocateDescriptorSetsUnique(
-                        vk::DescriptorSetAllocateInfo{}
-                        .setDescriptorPool(this->descriptorPool.get())
-                        .setSetLayouts(this->descriptorSetLayout.get())
-                        ).front());
+                            vk::DescriptorSetAllocateInfo{}
+                            .setDescriptorPool(this->descriptorPool.get())
+                            .setSetLayouts(this->descriptorSetLayout.get())
+                            ).front());
 
                 // WRITE
-                Image& image = this->envMapGenerator.createAndGetImage(vk::Format::eR32G32B32A32Sfloat, {envMapHeight, envMapWidth, 1});
+                Image& image = this->envMapGenerator.createAndGetImage(vk::Format::eR32G32B32A32Sfloat, {pushConstants.height, pushConstants.width, 1});
                 vk::DescriptorImageInfo imageInfo{};
                 imageInfo
                     .setImageView(image.imageView.get())
@@ -216,17 +277,11 @@ namespace vlb
                 this->device.get().updateDescriptorSets(writeBuffer, nullptr);
 
                 // PIPELINE LAYOUT
-                struct PushConstant
-                {
-                    uint32_t width;
-                    uint32_t height;
-                };
-
                 vk::PushConstantRange pcRange{};
                 pcRange
                     .setStageFlags(vk::ShaderStageFlagBits::eCompute)
                     .setOffset(0)
-                    .setSize(sizeof(PushConstant));
+                    .setSize(sizeof(this->pushConstants));
 
                 this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
                         vk::PipelineLayoutCreateInfo{}
@@ -262,11 +317,7 @@ namespace vlb
                 }
             }
 
-            void updateMapDescriptorSet()
-            {
-            }
-
-            void recordBakingCmd()
+            void dipatchBakingKernel()
             {
                 auto cmd = this->recordComputeCommandBuffer();
                 cmd.bindPipeline(vk::PipelineBindPoint::eCompute, this->pipeline.get());
@@ -275,7 +326,12 @@ namespace vlb
                         0,
                         { this->descriptorSet.get() },
                         {});
-                cmd.dispatch((uint32_t)ceil(this->envMapWidth / float(WORKGROUP_SIZE)), (uint32_t)ceil(this->envMapHeight / float(WORKGROUP_SIZE)), 1);
+                cmd.pushConstants(
+                        this->pipelineLayout.get(),
+                        vk::ShaderStageFlagBits::eCompute,
+                        0, sizeof(this->pushConstants), &(this->pushConstants)
+                        );
+                cmd.dispatch((uint32_t)ceil(this->pushConstants.width / float(WORKGROUP_SIZE)), (uint32_t)ceil(this->pushConstants.height / float(WORKGROUP_SIZE)), 1);
                 this->flushComputeCommandBuffer(cmd);
             }
 
@@ -284,26 +340,11 @@ namespace vlb
                 for (glm::vec3 pos : probePositions)
                 {
                     auto envMap = envMapGenerator.getMap(pos);
-                    updateMapDescriptorSet();
+                    //auto envMap = envMapGenerator.getTestMap("test_env_map.jpg");
 
-                    //recordBakingCmd();
+                    dipatchBakingKernel();
                 }
             }
-
-        private:
-            EnvMapGenerator envMapGenerator;
-
-            float                  probeSpacingDistance;
-            uint32_t               envMapWidth = 1000;
-            uint32_t               envMapHeight = 1000;
-            std::vector<glm::vec3> probePositions;
-
-            vk::UniqueDescriptorPool      descriptorPool;
-            vk::UniqueDescriptorSet       descriptorSet;
-            vk::UniqueDescriptorSetLayout descriptorSetLayout;
-            vk::UniquePipeline            pipeline;
-            vk::UniquePipelineCache       pipelineCache;
-            vk::UniquePipelineLayout      pipelineLayout;
     };
 }
 
