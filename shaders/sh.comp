@@ -17,29 +17,28 @@ layout(push_constant) uniform PushConstants
     int height;
 } constants;
 
-layout (set = 0, binding = 0)        uniform sampler2D environmentMap;
-layout (set = 0, binding = 1, rgba8) uniform image2D   debugImage;
-layout (set = 0, binding = 2)        buffer            buff { dvec3 coeffs[9]; };
+layout (set = 0, binding = 0, rgba8) uniform image2D environmentMap;
+layout (set = 0, binding = 1)        buffer buff { vec3 coeffs[16]; };
 
-vec3 toVector(double phi, double theta)
+vec3 toVector(float phi, float theta)
 {
-    double r = sin(theta);
+    float r = sin(theta);
     return vec3(r * cos(phi), r * sin(phi), cos(theta));
 }
 
-double u2phi(int u)
+float u2phi(int u)
 {
-    return PI * double(u) + 2 * PI / constants.width;
+    return PI * float(u) + 2. * PI / float(constants.width);
 }
 
-double v2theta(int v)
+float v2theta(int v)
 {
-    return PI * double(v) / 2 + PI / (2 * constants.height);
+    return PI * float(v) / 2. + PI / (2. * float(constants.height));
 }
 
-double calcWeight(ivec2 uv)
+float calcWeight(ivec2 uv)
 {
-    double pixelArea  = (2.0 * PI / constants.width) * (PI / constants.height);
+    float pixelArea  = (2. * PI / float(constants.width)) * (PI / float(constants.height));
     return pixelArea * sin(v2theta(uv.y));
 }
 
@@ -50,15 +49,15 @@ void main()
 
     ivec2 uv = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
 
-    vec3   dir    = toVector(u2phi(uv.x), v2theta(uv.y));
-    vec3   color  = texelFetch(environmentMap, uv, 0).xyz;
-    double weight = calcWeight(uv);
+    vec3  dir    = toVector(u2phi(uv.x), v2theta(uv.y));
+    vec3  color  = imageLoad(environmentMap, uv).xyz;
+    float weight = calcWeight(uv);
 
-    for (int l = 0; l < 3; ++l)
+    for (int l = 0; l < 4; ++l)
     {
         for (int m = -l; m < l + 1; ++m)
         {
-            coeffs[l * (l + 1) + m] += weight * color * vec3(EvalSH(l, m, dir));
+            coeffs[l * (l + 1) + m] += weight * color * vec3(SH(l, m, dir));
         }
     }
 }

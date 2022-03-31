@@ -1,134 +1,134 @@
 // took from https://github.com/google/spherical-harmonics/blob/master/sh/spherical_harmonics.cc
 
-double HardcodedSH00(const vec3 d)
+float HardcodedSH00(const vec3 d)
 {
     return 0.282095;
 }
 
-double HardcodedSH1n1(const vec3 d)
+float HardcodedSH1n1(const vec3 d)
 {
     return -0.488603 * d.y;
 }
 
-double HardcodedSH10(const vec3 d)
+float HardcodedSH10(const vec3 d)
 {
     return 0.488603 * d.z;
 }
 
-double HardcodedSH1p1(const vec3 d)
+float HardcodedSH1p1(const vec3 d)
 {
     return -0.488603 * d.x;
 }
 
-double HardcodedSH2n2(const vec3 d)
+float HardcodedSH2n2(const vec3 d)
 {
     return 1.092548 * d.x * d.y;
 }
 
-double HardcodedSH2n1(const vec3 d)
+float HardcodedSH2n1(const vec3 d)
 {
     return -1.092548 * d.y * d.z;
 }
 
-double HardcodedSH20(const vec3 d)
+float HardcodedSH20(const vec3 d)
 {
     return 0.315392 * (-d.x * d.x - d.y * d.y + 2.0 * d.z * d.z);
 }
 
-double HardcodedSH2p1(const vec3 d)
+float HardcodedSH2p1(const vec3 d)
 {
     return -1.092548 * d.x * d.z;
 }
 
-double HardcodedSH2p2(const vec3 d)
+float HardcodedSH2p2(const vec3 d)
 {
     return 0.546274 * (d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH3n3(const vec3 d)
+float HardcodedSH3n3(const vec3 d)
 {
     return -0.590044 * d.y * (3.0 * d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH3n2(const vec3 d)
+float HardcodedSH3n2(const vec3 d)
 {
     return 2.890611 * d.x * d.y * d.z;
 }
 
-double HardcodedSH3n1(const vec3 d)
+float HardcodedSH3n1(const vec3 d)
 {
     return -0.457046 * d.y * (4.0 * d.z * d.z - d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH30(const vec3 d)
+float HardcodedSH30(const vec3 d)
 {
     return 0.373176 * d.z * (2.0 * d.z * d.z - 3.0 * d.x * d.x - 3.0 * d.y * d.y);
 }
 
-double HardcodedSH3p1(const vec3 d)
+float HardcodedSH3p1(const vec3 d)
 {
     return -0.457046 * d.x * (4.0 * d.z * d.z - d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH3p2(const vec3 d)
+float HardcodedSH3p2(const vec3 d)
 {
     return 1.445306 * d.z * (d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH3p3(const vec3 d)
+float HardcodedSH3p3(const vec3 d)
 {
     return -0.590044 * d.x * (d.x * d.x - 3.0 * d.y * d.y);
 }
 
-double HardcodedSH4n4(const vec3 d)
+float HardcodedSH4n4(const vec3 d)
 {
     return 2.503343 * d.x * d.y * (d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH4n3(const vec3 d)
+float HardcodedSH4n3(const vec3 d)
 {
     return -1.770131 * d.y * d.z * (3.0 * d.x * d.x - d.y * d.y);
 }
 
-double HardcodedSH4n2(const vec3 d)
+float HardcodedSH4n2(const vec3 d)
 {
     return 0.946175 * d.x * d.y * (7.0 * d.z * d.z - 1.0);
 }
 
-double HardcodedSH4n1(const vec3 d)
+float HardcodedSH4n1(const vec3 d)
 {
     return -0.669047 * d.y * d.z * (7.0 * d.z * d.z - 3.0);
 }
 
-double HardcodedSH40(const vec3 d)
+float HardcodedSH40(const vec3 d)
 {
-    double z2 = d.z * d.z;
+    float z2 = d.z * d.z;
     return 0.105786 * (35.0 * z2 * z2 - 30.0 * z2 + 3.0);
 }
 
-double HardcodedSH4p1(const vec3 d)
+float HardcodedSH4p1(const vec3 d)
 {
     return -0.669047 * d.x * d.z * (7.0 * d.z * d.z - 3.0);
 }
 
-double HardcodedSH4p2(const vec3 d)
+float HardcodedSH4p2(const vec3 d)
 {
     return 0.473087 * (d.x * d.x - d.y * d.y) * (7.0 * d.z * d.z - 1.0);
 }
 
-double HardcodedSH4p3(const vec3 d)
+float HardcodedSH4p3(const vec3 d)
 {
     return -1.770131 * d.x * d.z * (d.x * d.x - 3.0 * d.y * d.y);
 }
 
-double HardcodedSH4p4(const vec3 d)
+float HardcodedSH4p4(const vec3 d)
 {
-    double x2 = d.x * d.x;
-    double y2 = d.y * d.y;
+    float x2 = d.x * d.x;
+    float y2 = d.y * d.y;
     return 0.625836 * (x2 * (x2 - 3.0 * y2) - y2 * (3.0 * x2 - y2));
 }
 
-double EvalSH(int l, int m, const vec3 dir)
+float SH(int l, int m, const vec3 dir)
 {
     switch (l)
     {

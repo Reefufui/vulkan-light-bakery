@@ -91,6 +91,7 @@ namespace vlb {
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
 
             Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
+            Image  createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
 
         private:
 
@@ -122,6 +123,9 @@ namespace vlb {
 
             static Buffer createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size, vk::BufferUsageFlags usage,
                     vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
+
+            static Image createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Format imageFormat, vk::Extent3D imageExtent,
+                    vk::CommandPool transferPool, vk::Queue transferQueue);
 
             Application(bool isGraphical = true);
             Application(const Application& other) = delete;

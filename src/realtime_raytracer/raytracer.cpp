@@ -7,58 +7,6 @@
 
 namespace vlb {
 
-    void Raytracer::createStorageImage()
-    {
-        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
-        vk::ImageCreateInfo imageInfo{};
-        imageInfo
-            .setImageType(vk::ImageType::e2D)
-            .setFormat(this->surfaceFormat)
-            .setExtent(this->surfaceExtent)
-            .setMipLevels(1)
-            .setArrayLayers(1)
-            .setSamples(vk::SampleCountFlagBits::e1)
-            .setTiling(vk::ImageTiling::eOptimal)
-            .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage)
-            .setInitialLayout(vk::ImageLayout::eUndefined)
-            .setSharingMode(vk::SharingMode::eConcurrent)
-            .setQueueFamilyIndices(queueFamilyIndices);
-
-        this->rayGenStorage.handle = this->device.get().createImageUnique(imageInfo);
-
-        vk::MemoryPropertyFlags properties = vk::MemoryPropertyFlagBits::eDeviceLocal;
-        vk::MemoryRequirements memReq = this->device.get().getImageMemoryRequirements(this->rayGenStorage.handle.get());
-        vk::MemoryAllocateInfo allocInfo{};
-        allocInfo.allocationSize  = memReq.size;
-        for (uint32_t i = 0; i < this->physicalDeviceMemoryProperties.memoryTypeCount; ++i)
-        {
-            if ((memReq.memoryTypeBits & (1 << i)) && ((this->physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & properties)
-                        == properties))
-            {
-                allocInfo.memoryTypeIndex = i;
-                break;
-            }
-        }
-        this->rayGenStorage.memory = this->device.get().allocateMemoryUnique(allocInfo);
-        this->device.get().bindImageMemory(this->rayGenStorage.handle.get(), this->rayGenStorage.memory.get(), 0);
-
-        vk::ImageViewCreateInfo imageViewInfo{};
-        imageViewInfo.viewType = vk::ImageViewType::e2D;
-        imageViewInfo.format = this->surfaceFormat;
-        imageViewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-        imageViewInfo.subresourceRange.baseMipLevel = 0;
-        imageViewInfo.subresourceRange.levelCount = 1;
-        imageViewInfo.subresourceRange.baseArrayLayer = 0;
-        imageViewInfo.subresourceRange.layerCount = 1;
-        imageViewInfo.image = this->rayGenStorage.handle.get();
-        this->rayGenStorage.imageView = this->device.get().createImageViewUnique(imageViewInfo);
-
-        vk::CommandBuffer commandBuffer = recordTransferCommandBuffer();
-        Application::setImageLayout(commandBuffer, this->rayGenStorage.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
-                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-        flushTransferCommandBuffer(commandBuffer);
-    }
-
     void Raytracer::createResultImageDSLayout()
     {
         vk::DescriptorSetLayoutBinding resultImageLayoutBinding{};
@@ -482,7 +430,7 @@ namespace vlb {
 
     Raytracer::Raytracer()
     {
-        createStorageImage();
+        this->rayGenStorage = createImage(this->surfaceFormat, this->surfaceExtent);
         createResultImageDSLayout();
 
         createRayTracingPipeline();
