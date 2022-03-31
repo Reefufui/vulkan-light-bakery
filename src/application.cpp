@@ -423,6 +423,64 @@ namespace vlb {
         return buffer;
     }
 
+    Application::Image Application::createImage(vk::Format imageFormat, vk::Extent3D imageExtent)
+    {
+        return createImage(this->device.get(), this->physicalDevice, imageFormat, imageExtent, this->commandPool.transfer.get(), this->queue.transfer);
+    }
+
+    Application::Image Application::createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Format imageFormat, vk::Extent3D imageExtent,
+            vk::CommandPool transferPool, vk::Queue transferQueue)
+    {
+        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
+        Image image{};
+        image.handle = device.createImageUnique(
+                vk::ImageCreateInfo{}
+                .setImageType(vk::ImageType::e2D)
+                .setFormat(imageFormat)
+                .setExtent(imageExtent)
+                .setMipLevels(1)
+                .setArrayLayers(1)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setTiling(vk::ImageTiling::eOptimal)
+                .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage)
+                .setInitialLayout(vk::ImageLayout::eUndefined)
+                .setSharingMode(vk::SharingMode::eConcurrent)
+                .setQueueFamilyIndices(queueFamilyIndices)
+                );
+
+        auto memoryRequirements = device.getImageMemoryRequirements(image.handle.get());
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+        image.memory = device.allocateMemoryUnique(
+                vk::MemoryAllocateInfo{}
+                .setAllocationSize(memoryRequirements.size)
+                .setMemoryTypeIndex(getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
+                );
+        device.bindImageMemory(image.handle.get(), image.memory.get(), 0);
+
+        image.imageView = device.createImageViewUnique(
+                vk::ImageViewCreateInfo{}
+                .setViewType(vk::ImageViewType::e2D)
+                .setFormat(imageFormat)
+                .setSubresourceRange(
+                    vk::ImageSubresourceRange{}
+                    .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                    .setBaseMipLevel(0)
+                    .setLevelCount(1)
+                    .setBaseArrayLayer(0)
+                    .setLayerCount(1)
+                    )
+                .setImage(image.handle.get())
+                );
+
+        vk::CommandBuffer cmd = recordCommandBuffer(device, transferPool);
+        setImageLayout(cmd, image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
+                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+        flushCommandBuffer(device, transferPool, cmd, transferQueue);
+
+        return image;
+    }
+
     void Application::checkValidationLayers(const std::vector<const char*>& layersToCheck)
     {
         auto availableLayers = vk::enumerateInstanceLayerProperties();

@@ -128,7 +128,7 @@ double HardcodedSH4p4(const vec3 d)
     return 0.625836 * (x2 * (x2 - 3.0 * y2) - y2 * (3.0 * x2 - y2));
 }
 
-double EvalSH(int l, int m, const vec3 dir)
+double SH(int l, int m, const vec3 dir)
 {
     switch (l)
     {

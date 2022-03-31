@@ -18,8 +18,7 @@ layout(push_constant) uniform PushConstants
 } constants;
 
 layout (set = 0, binding = 0)        uniform sampler2D environmentMap;
-layout (set = 0, binding = 1, rgba8) uniform image2D   debugImage;
-layout (set = 0, binding = 2)        buffer            buff { dvec3 coeffs[9]; };
+layout (set = 0, binding = 1)        buffer            buff { dvec3 coeffs[9]; };
 
 vec3 toVector(double phi, double theta)
 {
@@ -58,7 +57,7 @@ void main()
     {
         for (int m = -l; m < l + 1; ++m)
         {
-            coeffs[l * (l + 1) + m] += weight * color * vec3(EvalSH(l, m, dir));
+            coeffs[l * (l + 1) + m] += weight * color * vec3(SH(l, m, dir));
         }
     }
 }

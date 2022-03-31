@@ -10,7 +10,6 @@ namespace vlb {
     class Raytracer : public Renderer
     {
         private:
-            void createStorageImage();
             void createRayTracingPipeline();
             void createShaderBindingTable();
             void createResultImageDSLayout();
