@@ -340,9 +340,10 @@ namespace vlb
                 for (glm::vec3 pos : probePositions)
                 {
                     auto envMap = envMapGenerator.getMap(pos);
-                    //auto envMap = envMapGenerator.getTestMap("test_env_map.jpg");
 
                     dipatchBakingKernel();
+                    //TODO
+                    //
                 }
             }
     };
