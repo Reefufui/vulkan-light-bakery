@@ -70,14 +70,15 @@ void main()
     vec4 color = vec4(0.05f) + constants.lightIntensity * diffuse;
 
     int textureIdx = int(material.textures.baseColor.index);
-    if (textureIdx == -1)
-    {
-        int colorIdx = int(gl_InstanceCustomIndexEXT);
-        color = color * colors[colorIdx % 7];
-    }
-    else
+    if (textureIdx != -1)
     {
         color = color * texture(textures[textureIdx], uv);
+    }
+    else if (material.factors.baseColor != vec4(0.0f))
+    {
+        //int colorIdx = int(gl_InstanceCustomIndexEXT);
+        //color = color * colors[colorIdx % 7];
+        color = material.factors.baseColor * color;
     }
 
     payLoad = rgb2srgb(color).rgb;

@@ -442,7 +442,7 @@ namespace vlb {
                 .setArrayLayers(1)
                 .setSamples(vk::SampleCountFlagBits::e1)
                 .setTiling(vk::ImageTiling::eOptimal)
-                .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage)
+                .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eStorage)
                 .setInitialLayout(vk::ImageLayout::eUndefined)
                 .setSharingMode(vk::SharingMode::eConcurrent)
                 .setQueueFamilyIndices(queueFamilyIndices)
