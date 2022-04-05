@@ -1,6 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_scalar_block_layout  : enable
 //#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 //#extension GL_ARB_separate_shader_objects : enable
 
@@ -17,29 +18,29 @@ layout(push_constant) uniform PushConstants
     int height;
 } constants;
 
-layout (set = 0, binding = 0, rgba8) uniform image2D environmentMap;
-layout (set = 0, binding = 1)        buffer buff { vec3 coeffs[16]; };
+layout (set = 0, binding = 0, rgba8)  uniform image2D environmentMap;
+layout (set = 0, binding = 1, scalar) buffer buff { vec3 coeffs[9]; };
 
 vec3 toVector(float phi, float theta)
 {
     float r = sin(theta);
-    return vec3(r * cos(phi), r * sin(phi), cos(theta));
+    return normalize(vec3(r * cos(phi), r * sin(phi), cos(theta)));
 }
 
-float u2phi(int u)
+float x2phi(int x)
 {
-    return PI * float(u) + 2. * PI / float(constants.width);
+    return 2.f * PI * (float(x) + 0.5f) / float(constants.width);
 }
 
-float v2theta(int v)
+float y2theta(int y)
 {
-    return PI * float(v) / 2. + PI / (2. * float(constants.height));
+    return PI * (float(y) + 0.5f) / float(constants.height);
 }
 
-float calcWeight(ivec2 uv)
+float calcWeight(ivec2 xy)
 {
-    float pixelArea  = (2. * PI / float(constants.width)) * (PI / float(constants.height));
-    return pixelArea * sin(v2theta(uv.y));
+    float pixelArea = (2.f * PI / float(constants.width)) * (PI / float(constants.height));
+    return pixelArea * sin(y2theta(xy.y));
 }
 
 void main()
@@ -47,17 +48,17 @@ void main()
     if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height)
         return;
 
-    ivec2 uv = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    ivec2 xy = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
 
-    vec3  dir    = toVector(u2phi(uv.x), v2theta(uv.y));
-    vec3  color  = imageLoad(environmentMap, uv).xyz;
-    float weight = calcWeight(uv);
+    vec3  dir    = toVector(x2phi(xy.x), y2theta(xy.y));
+    vec3  color  = imageLoad(environmentMap, xy).xyz;
+    float weight = calcWeight(xy);
 
-    for (int l = 0; l < 4; ++l)
+    for (int l = 0; l < 3; ++l)
     {
         for (int m = -l; m < l + 1; ++m)
         {
-            coeffs[l * (l + 1) + m] += weight * color * vec3(SH(l, m, dir));
+            coeffs[l * (l + 1) + m] += weight * vec3(SH(l, m, dir)) * color;
         }
     }
 }

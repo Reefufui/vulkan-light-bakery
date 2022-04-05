@@ -1,6 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_scalar_block_layout  : enable
 //#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 //#extension GL_ARB_separate_shader_objects : enable
 
@@ -17,23 +18,23 @@ layout(push_constant) uniform PushConstants
     int height;
 } constants;
 
-layout (set = 0, binding = 0, rgba8) uniform image2D environmentMap;
-layout (set = 0, binding = 1)        buffer buff { vec3 coeffs[16]; };
+layout (set = 0, binding = 0, rgba8)  uniform image2D environmentMap;
+layout (set = 0, binding = 1, scalar) buffer buff { vec3 coeffs[9]; };
 
 vec3 toVector(float phi, float theta)
 {
     float r = sin(theta);
-    return vec3(r * cos(phi), r * sin(phi), cos(theta));
+    return normalize(vec3(r * cos(phi), r * sin(phi), cos(theta)));
 }
 
-float u2phi(int u)
+float x2phi(int x)
 {
-    return PI * float(u) + 2.f * PI / float(constants.width);
+    return 2.f * PI * (float(x) + 0.5f) / float(constants.width);
 }
 
-float v2theta(int v)
+float y2theta(int y)
 {
-    return PI * float(v) / 2.f + PI / (2.f * float(constants.height));
+    return PI * (float(y) + 0.5f) / float(constants.height);
 }
 
 void main()
@@ -41,19 +42,19 @@ void main()
     if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height)
         return;
 
-    ivec2 uv  = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    vec3  dir = toVector(u2phi(uv.x), v2theta(uv.y));
+    ivec2 xy  = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    vec3  dir = toVector(x2phi(xy.x), y2theta(xy.y));
 
     vec3 color = vec3(0.f);
 
-    for (int l = 0; l < 4; ++l)
+    for (int l = 0; l < 3; ++l)
     {
         for (int m = -l; m < l + 1; ++m)
         {
-            color += coeffs[l * (l + 1) + m] * vec3(SH(l, m, dir));
+            color += coeffs[l * (l + 1) + m] * SH(l, m, dir);
         }
     }
 
-    imageStore(environmentMap, uv, vec4(color, 1.f));
+    imageStore(environmentMap, xy, vec4(color, 1.f));
 }
 

@@ -58,8 +58,18 @@ namespace vlb {
         vk::BufferUsageFlags    usg{ eStorageBuffer };
         vk::MemoryPropertyFlags mem{ eHostVisible | eHostCoherent };
 
-        float init[16 * 3] = {0};
-        this->SHCoeffs = createBuffer(16 * 3 * sizeof(float), usg, mem, init);
+        float init[9 * 3] = {0.f};
+        /*
+        float init[9 * 3] = {
+            -1.028, 0.779, -0.275, 0.601, -0.256,
+            1.891, -1.658, -0.370, -0.772,
+            -0.591, -0.713, 0.191, 1.206, -0.587,
+            -0.051, 1.543, -0.818, 1.482,
+            -1.119, 0.559, 0.433, -0.680, -1.815,
+            -0.915, 1.345, 1.572, -0.622};
+            */
+
+        this->SHCoeffs = createBuffer(9 * 3 * sizeof(float), usg, mem, init);
 
         // POOL
         std::vector<vk::DescriptorPoolSize> poolSizes = {
@@ -228,7 +238,7 @@ namespace vlb {
     void LightBaker::bake()
     {
         //Image& image = this->envMapGenerator.createImage(vk::Format::eR32G32B32A32Sfloat, {10000, 10000, 1});
-        Image& image = this->envMapGenerator.createImage(vk::Format::eB8G8R8A8Unorm, "test_env_map.jpg");
+        Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, "test.png");
         createBakingPipeline();
         dispatchBakingKernel();
         modifyPipelineForDebug();
@@ -243,6 +253,17 @@ namespace vlb {
         }
         */
         this->envMapGenerator.saveImage();
+
+        void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 9 * 3 * sizeof(float));
+        float* coeffs = static_cast<float*>(dataPtr);
+        float sum = 0.0f;
+        for (int i = 0; i < 9 * 3; ++i)
+        {
+            std::cout << coeffs[i] << " ";
+            sum += coeffs[i];
+        }
+        std::cout << "\nsum: " << sum << "\n";
+        device.get().unmapMemory(SHCoeffs.memory.get());
     }
 }
 
