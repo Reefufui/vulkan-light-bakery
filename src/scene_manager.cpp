@@ -6,7 +6,7 @@
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
-//#include <glm/gtx/string_cast.hpp> // Debug
+#include <glm/gtx/string_cast.hpp> // Debug
 
 #include <iostream>
 #include <filesystem>
@@ -108,6 +108,14 @@ namespace vlb {
 
     std::array<glm::vec3, 8> Scene_t::getBoundingBox()
     {
+        for (int i = 0; i < 8; ++i)
+        {
+            bool bigX = i & (1 << 2);
+            bool bigY = i & (1 << 1);
+            bool bigZ = i & (1 << 0);
+            this->boundingBox[i] = glm::vec3(XxYyZz[1 - (int)bigX], XxYyZz[3 - (int)bigY], XxYyZz[5 - (int)bigZ]);
+        }
+
         return this->boundingBox;
     }
 
@@ -659,11 +667,6 @@ namespace vlb {
         {
             const auto& node = this->model.nodes[nodeIndex];
             loadNode(nullptr, node, nodeIndex);
-        }
-
-        for (auto x : this->XxYyZz)
-        {
-            std::cout << x << "\n";
         }
 
         return shared_from_this();

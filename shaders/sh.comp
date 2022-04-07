@@ -48,7 +48,7 @@ void main()
     if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height)
         return;
 
-    ivec2 xy = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    const ivec2 xy = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
 
     vec3  dir    = toVector(x2phi(xy.x), y2theta(xy.y));
     vec3  color  = imageLoad(environmentMap, xy).xyz;

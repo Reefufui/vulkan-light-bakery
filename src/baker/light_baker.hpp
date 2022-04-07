@@ -22,8 +22,8 @@ namespace vlb {
 
             EnvMapGenerator envMapGenerator;
 
-            float                  probeSpacingDistance;
             std::vector<glm::vec3> probePositions;
+            glm::vec3              probesCount3D;
             Application::Buffer    SHCoeffs;
 
             vk::UniqueDescriptorPool      descriptorPool;
