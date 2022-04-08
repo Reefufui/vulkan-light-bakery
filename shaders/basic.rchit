@@ -76,8 +76,6 @@ void main()
     }
     else if (material.factors.baseColor != vec4(0.0f))
     {
-        //int colorIdx = int(gl_InstanceCustomIndexEXT);
-        //color = color * colors[colorIdx % 7];
         color = material.factors.baseColor * color;
     }
 

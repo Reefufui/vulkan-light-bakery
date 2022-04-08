@@ -4,7 +4,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #include "random.glsl"
-#include "structures.h"
+#include "sh_common.h"
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 1, binding = 0, rgba8) uniform image2D image;
@@ -12,37 +12,19 @@ layout(set = 1, binding = 0, rgba8) uniform image2D image;
 layout(push_constant) uniform PushConstants
 {
     vec3 origin;
-} constants;
+} envConst;
 
 layout(location = 0) rayPayloadEXT vec3 color;
 
-vec3 toVector(float phi, float theta)
-{
-    float r = sin(theta);
-    return normalize(vec3(r * cos(phi), r * sin(phi), cos(theta)));
-}
-
-float x2phi(int x)
-{
-    return 2.f * PI * (float(x) + 0.5f) / float(constants.width);
-}
-
-float y2theta(int y)
-{
-    return PI * (float(y) + 0.5f) / float(constants.height);
-}
-
-
 void main()
 {
-    const ivec2 xy = ivec2(gl_LaunchIDEXT.xy);
+    const ivec2 xy     = ivec2(gl_LaunchIDEXT.xy);
+    const vec3  dir    = toVector(x2phi(xy.x, int(gl_LaunchSizeEXT.x)), y2theta(xy.y, int(gl_LaunchSizeEXT.y)));
+    const float tmin   = 0.001;
+    const float tmax   = 10000.0;
 
-    vec3  dir    = toVector(x2phi(xy.x), y2theta(xy.y));
-    vec4  origin = constants.origin;
-    float tmin = 0.001;
-    float tmax = 10000.0;
     color = vec3(0.f);
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, envConst.origin, tmin, dir, tmax, 0);
     imageStore(image, xy, vec4(color, 0.0f));
 }
 

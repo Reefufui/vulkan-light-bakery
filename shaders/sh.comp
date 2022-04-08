@@ -5,10 +5,9 @@
 //#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 //#extension GL_ARB_separate_shader_objects : enable
 
-#include "hardcoded_sh_basis.h"
+#include "sh_common.h"
 
 #define WORKGROUP_SIZE 16
-#define PI 3.1415926538f
 
 layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1) in;
 
@@ -19,46 +18,22 @@ layout(push_constant) uniform PushConstants
 } constants;
 
 layout (set = 0, binding = 0, rgba8)  uniform image2D environmentMap;
-layout (set = 0, binding = 1, scalar) buffer buff { vec3 coeffs[9]; };
-
-vec3 toVector(float phi, float theta)
-{
-    float r = sin(theta);
-    return normalize(vec3(r * cos(phi), r * sin(phi), cos(theta)));
-}
-
-float x2phi(int x)
-{
-    return 2.f * PI * (float(x) + 0.5f) / float(constants.width);
-}
-
-float y2theta(int y)
-{
-    return PI * (float(y) + 0.5f) / float(constants.height);
-}
-
-float calcWeight(ivec2 xy)
-{
-    float pixelArea = (2.f * PI / float(constants.width)) * (PI / float(constants.height));
-    return pixelArea * sin(y2theta(xy.y));
-}
+layout (set = 0, binding = 1, scalar) buffer buff { vec3 coeffs[16]; };
 
 void main()
 {
-    if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height)
-        return;
+    if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height) return;
 
-    const ivec2 xy = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    const ivec2 xy        = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    const vec3  dir       = toVector(x2phi(xy.x, constants.width), y2theta(xy.y, constants.height));
+    const vec3  color     = 255.0f * imageLoad(environmentMap, xy).xyz;
+    const float normConst = calcNormalizationConst(constants.height, constants.width);
 
-    vec3  dir    = toVector(x2phi(xy.x), y2theta(xy.y));
-    vec3  color  = imageLoad(environmentMap, xy).xyz;
-    float weight = calcWeight(xy);
-
-    for (int l = 0; l < 3; ++l)
+    for (int l = 0; l < 4; l++)
     {
-        for (int m = -l; m < l + 1; ++m)
+        for (int m = -l; m < l + 1; m++)
         {
-            coeffs[l * (l + 1) + m] += weight * vec3(SH(l, m, dir)) * color;
+            coeffs[l * (l + 1) + m] += normConst * SH(l, m, dir) * color;
         }
     }
 }
