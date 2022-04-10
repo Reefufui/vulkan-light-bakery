@@ -42,6 +42,12 @@ namespace vlb {
                 vk::ImageLayout        imageLayout;
             };
 
+            struct ShaderBindingTable
+            {
+                std::unordered_map<std::string, vk::StridedDeviceAddressRegionKHR> entries;
+                std::vector<Buffer> storage;
+            };
+
         protected:
 
             vk::UniqueInstance    instance;
@@ -88,10 +94,10 @@ namespace vlb {
             vk::CommandBuffer recordComputeCommandBuffer(vk::CommandBufferAllocateInfo info = {});
             void flushComputeCommandBuffer(vk::CommandBuffer& cmdBuffer);
 
+            Buffer                 createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
+            Image                  createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
-
-            Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
-            Image  createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
+            ShaderBindingTable     createShaderBindingTable(uint32_t shaderGroupsCount, std::vector<std::string>& keys, vk::Pipeline& pipeline);
 
         private:
 
@@ -121,11 +127,32 @@ namespace vlb {
             static vk::CommandBuffer recordCommandBuffer(vk::Device device, vk::CommandPool commandPool, vk::CommandBufferAllocateInfo info = {});
             static void flushCommandBuffer(vk::Device& device, vk::CommandPool& commandPool, vk::CommandBuffer& cmdBuffer, vk::Queue queue);
 
-            static Buffer createBuffer(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::DeviceSize size, vk::BufferUsageFlags usage,
-                    vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
+            static Buffer createBuffer(
+                    vk::Device& device,
+                    vk::PhysicalDevice& physicalDevice,
+                    vk::DeviceSize size,
+                    vk::BufferUsageFlags usage,
+                    vk::MemoryPropertyFlags memoryProperty,
+                    const void* data = nullptr);
 
-            static Image createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Format imageFormat, vk::Extent3D imageExtent,
-                    vk::CommandPool transferPool, vk::Queue transferQueue);
+            static Image createImage(
+                    vk::Device& device,
+                    vk::PhysicalDevice& physicalDevice,
+                    vk::Format imageFormat,
+                    vk::Extent3D imageExtent,
+                    vk::CommandPool transferPool,
+                    vk::Queue transferQueue);
+
+            static vk::UniqueShaderModule createShaderModule(
+                    vk::Device& device,
+                    const std::string& filename);
+
+            static ShaderBindingTable createShaderBindingTable(
+                    vk::Device& device,
+                    vk::PhysicalDevice& physicalDevice,
+                    uint32_t shaderGroupsCount,
+                    std::vector<std::string>& keys,
+                    vk::Pipeline& pipeline);
 
             Application(bool isGraphical = true);
             Application(const Application& other) = delete;

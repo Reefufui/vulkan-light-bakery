@@ -140,7 +140,11 @@ namespace vlb {
             Camera       getCamera(int index = -1);
             const int    getCameraIndex();
             const size_t getCamerasCount();
+
+            // Descriptors
             vk::DescriptorSetLayout getDescriptorSetLayout();
+            Scene                   updateSceneDescriptorSets(vk::DescriptorSet targetDS);
+
 
             // TODO MAKE PRIVATE
             AccelerationStructure tlas;

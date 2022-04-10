@@ -39,13 +39,27 @@ namespace vlb {
             vk::Format          envMapFormat;
             vk::Extent3D        envMapExtent;
 
+            vk::UniqueDescriptorPool      descriptorPool;
+            vk::UniqueDescriptorSet       sceneDS;
+            vk::UniqueDescriptorSetLayout imageLayout;
+            vk::UniqueDescriptorSet       imageDS;
+            vk::UniquePipeline            pipeline;
+            vk::UniquePipelineLayout      pipelineLayout;
+
+            uint32_t shaderGroupsCount;
+            Application::ShaderBindingTable sbt;
+
+            void createRayTracingPipeline();
+            void updateImageDescriptorSet();
+
         public:
             EnvMapGenerator();
             ~EnvMapGenerator();
 
             void                setScene(Scene&& scene);
             void                passVulkanResources(VulkanResources& info);
-            int                 getMap(glm::vec3 position);
+            void                setupVukanRaytracing();
+            void                getMap(glm::vec3 position);
             void                loadDebugMapFromPNG(const char* filename, unsigned char** texels);
             Application::Image& createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
             Application::Image& createImage(vk::Format imageFormat, const char* filename);

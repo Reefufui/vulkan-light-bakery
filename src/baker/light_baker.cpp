@@ -39,6 +39,7 @@ namespace vlb {
         this->probePositions = probePositionsFromBoudingBox(scene->getBoundingBox());
         this->envMapGenerator.setScene(std::move(scene));
         this->envMapGenerator.passVulkanResources(res2);
+        this->envMapGenerator.setupVukanRaytracing();
     }
 
     LightBaker::~LightBaker()
@@ -259,29 +260,20 @@ namespace vlb {
 
     void LightBaker::bake()
     {
-        //Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, {1000, 1000, 1});
-        Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, "test.png");
+        Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, {200, 200, 1});
+        //Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, "test.png");
         createBakingPipeline();
-        dispatchBakingKernel();
-        modifyPipelineForDebug();
-        dispatchBakingKernel();
 
         for (glm::vec3 pos : this->probePositions)
         {
-            //std::cout << "Position: (" << pos[0] << ", " << pos[1] << ", " << pos[2] << ")\n";
-            //auto envMap = envMapGenerator.getMap(pos);
-
+            this->envMapGenerator.getMap(pos);
+            dispatchBakingKernel();
+            void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 16 * 3 * sizeof(float));
+            float* coeffs = static_cast<float*>(dataPtr);
+            device.get().unmapMemory(SHCoeffs.memory.get());
         }
 
         this->envMapGenerator.saveImage();
-
-        void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 16 * 3 * sizeof(float));
-        float* coeffs = static_cast<float*>(dataPtr);
-        for (int i = 0; i < 16 * 3; ++i)
-        {
-            std::cout << coeffs[i] << "\n";
-        }
-        device.get().unmapMemory(SHCoeffs.memory.get());
     }
 }
 

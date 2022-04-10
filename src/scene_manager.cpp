@@ -106,6 +106,69 @@ namespace vlb {
         return this->descriptorSetLayout.get();
     }
 
+    Scene Scene_t::updateSceneDescriptorSets(vk::DescriptorSet targetDS)
+    {
+        vk::WriteDescriptorSetAccelerationStructureKHR tlasDescriptorInfo{};
+        tlasDescriptorInfo
+            .setAccelerationStructures(this->tlas->handle.get());
+
+        vk::WriteDescriptorSet tlasWriteDS{};
+        tlasWriteDS
+            .setDstSet(targetDS)
+            .setDstBinding(0)
+            .setDescriptorCount(1)
+            .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+            .setPNext(&tlasDescriptorInfo);
+
+        vk::DescriptorBufferInfo objDescDescriptorInfo{};
+        objDescDescriptorInfo
+            .setBuffer(this->instanceInfoBuffer.handle.get())
+            .setRange(VK_WHOLE_SIZE);
+
+        vk::WriteDescriptorSet objDescWriteDS{};
+        objDescWriteDS
+            .setDstSet(targetDS)
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(1)
+            .setBufferInfo(objDescDescriptorInfo);
+
+        vk::DescriptorBufferInfo materialsDescriptorInfo{};
+        materialsDescriptorInfo
+            .setBuffer(this->materialBuffer.handle.get())
+            .setRange(VK_WHOLE_SIZE);
+
+        vk::WriteDescriptorSet materialsWriteDS{};
+        materialsWriteDS
+            .setDstSet(targetDS)
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(2)
+            .setBufferInfo(materialsDescriptorInfo);
+
+        std::vector<vk::DescriptorImageInfo> texturesDescriptorInfo{};
+        for (const auto& texture : this->textures)
+        {
+            texturesDescriptorInfo.push_back(texture->descriptor);
+        }
+
+        vk::WriteDescriptorSet texturesWriteDS{};
+        texturesWriteDS
+            .setDstSet(targetDS)
+            .setDstBinding(3)
+            .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+            .setImageInfo(texturesDescriptorInfo);
+
+        this->device.updateDescriptorSets(tlasWriteDS, nullptr);
+        this->device.updateDescriptorSets(objDescWriteDS, nullptr);
+        this->device.updateDescriptorSets(materialsWriteDS, nullptr);
+        if (texturesDescriptorInfo.size())
+        {
+            this->device.updateDescriptorSets(texturesWriteDS, nullptr);
+        }
+
+        return shared_from_this();
+    }
+
+
     std::array<glm::vec3, 8> Scene_t::getBoundingBox()
     {
         for (int i = 0; i < 8; ++i)

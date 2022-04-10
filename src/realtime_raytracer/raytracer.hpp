@@ -15,19 +15,13 @@ namespace vlb {
             void createResultImageDSLayout();
             void createDescriptorSets();
             void updateResultImageDescriptorSets();
-            void updateSceneDescriptorSets(); // TODO: make scene's private
             void recordDrawCommandBuffer(uint64_t imageIndex);
             void draw();
             void handleSceneChange();
 
-            struct ShaderBindingTable
-            {
-                std::unordered_map<std::string, vk::StridedDeviceAddressRegionKHR> entries;
-                std::vector<Buffer> storage;
-            };
-
-            Image rayGenStorage;
-            ShaderBindingTable sbt;
+            Application::Image              rayGenStorage;
+            Application::ShaderBindingTable sbt;
+            uint32_t                        shaderGroupsCount;
 
             //TODO: impl. better descriptor sets managment (maybe auto-generated)
             struct DSLayout
@@ -45,9 +39,8 @@ namespace vlb {
             DS descriptorSet;
             DSLayout descriptorSetLayout;
 
-            vk::UniquePipeline            pipeline;
-            vk::UniquePipelineLayout      pipelineLayout;
-            uint32_t                      shaderGroupsCount;
+            vk::UniquePipeline       pipeline;
+            vk::UniquePipelineLayout pipelineLayout;
 
             std::vector<vk::UniqueCommandBuffer> drawCommandBuffers{};
 
