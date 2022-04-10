@@ -41,6 +41,8 @@ add_executable(rtrt
 
 add_executable(baker
     src/baker/main.cpp
+    src/baker/env_map_generator.cpp
+    src/baker/light_baker.cpp
     )
 
 target_link_libraries(rtrt ${CONAN_LIBS} -ldl core)

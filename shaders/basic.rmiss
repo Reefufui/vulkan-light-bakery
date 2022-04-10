@@ -14,5 +14,6 @@ vec4 rgb2srgb(vec4 linearRGB)
 
 void main()
 {
-    payLoad = rgb2srgb(vec4(0.1f, 0.1f, 0.1f, 1.0f)).rgb;
+    vec3 color = vec3(0.3f) + vec3(mix(0.0f, 1.0f, gl_WorldRayDirectionEXT.y), 0.0f, 0.0f);
+    payLoad = rgb2srgb(vec4(color, 1.0f)).rgb;
 }

@@ -29,14 +29,9 @@ namespace vlb {
         layouts.push_back(this->descriptorSetLayout.resultImage.get());
         layouts.push_back(this->sceneManager.getCamera()->getDescriptorSetLayout());
 
-        std::vector<vk::PushConstantRange> pushConstants{
-            { vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(shader::PushConstant) }
-        };
-
         this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
                 vk::PipelineLayoutCreateInfo{}
                 .setSetLayouts(layouts)
-                .setPushConstantRanges(pushConstants)
                 );
 
         enum StageIndices
@@ -113,7 +108,6 @@ namespace vlb {
                 );
 
         this->shaderGroupsCount = static_cast<uint32_t>(StageIndices::eShaderGroupCount);
-
         auto[result, p] = this->device.get().createRayTracingPipelineKHRUnique(nullptr, nullptr,
                 vk::RayTracingPipelineCreateInfoKHR{}
                 .setStages(shaderStages)
@@ -129,108 +123,6 @@ namespace vlb {
         else
         {
             this->pipeline = std::move(p);
-        }
-    }
-
-    void Raytracer::createShaderBindingTable()
-    {
-        auto deviceProperties = this->physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-        auto RTPipelineProperties = deviceProperties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-
-        auto alignedSize = [](uint32_t value, uint32_t alignment)
-        {
-            return (value + alignment - 1) & ~(alignment - 1);
-        };
-
-        const uint32_t handleSize        = RTPipelineProperties.shaderGroupHandleSize;
-        const uint32_t handleSizeAligned = alignedSize(handleSize, RTPipelineProperties.shaderGroupHandleAlignment);
-        const uint32_t sbtSize           = this->shaderGroupsCount * handleSizeAligned;
-
-        const vk::BufferUsageFlags sbtBufferUsageFlags = vk::BufferUsageFlagBits::eShaderBindingTableKHR
-            | vk::BufferUsageFlagBits::eTransferSrc
-            | vk::BufferUsageFlagBits::eShaderDeviceAddress;
-
-        const vk::MemoryPropertyFlags sbtMemoryProperty = vk::MemoryPropertyFlagBits::eHostVisible
-            | vk::MemoryPropertyFlagBits::eHostCoherent;
-
-        std::vector<uint8_t> shaderHandles(sbtSize);
-        auto result = this->device.get().getRayTracingShaderGroupHandlesKHR(this->pipeline.get(), 0, this->shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
-        if (result != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to get ray tracing shader group handles");
-        }
-
-        std::vector<std::string> keys = { "rayGen", "miss", "hit", "shadow" };
-        for (auto i{0}; i < keys.size(); ++i)
-        {
-            sbt.storage.push_back(createBuffer(handleSize, sbtBufferUsageFlags, sbtMemoryProperty, shaderHandles.data() + i * handleSizeAligned));
-            sbt.entries[keys[i]] = vk::StridedDeviceAddressRegionKHR{};
-            sbt.entries[keys[i]]
-                .setDeviceAddress(sbt.storage.back().deviceAddress)
-                .setStride(handleSizeAligned)
-                .setSize(handleSizeAligned);
-        }
-    }
-
-    void Raytracer::updateSceneDescriptorSets()
-    {
-        const auto& scene = this->sceneManager.getScene();
-
-        vk::WriteDescriptorSetAccelerationStructureKHR tlasDescriptorInfo{};
-        tlasDescriptorInfo
-            .setAccelerationStructures(scene->tlas->handle.get());
-
-        vk::WriteDescriptorSet tlasWriteDS{};
-        tlasWriteDS
-            .setDstSet(this->descriptorSet.scene.get())
-            .setDstBinding(0)
-            .setDescriptorCount(1)
-            .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
-            .setPNext(&tlasDescriptorInfo);
-
-        vk::DescriptorBufferInfo objDescDescriptorInfo{};
-        objDescDescriptorInfo
-            .setBuffer(scene->instanceInfoBuffer.handle.get())
-            .setRange(VK_WHOLE_SIZE);
-
-        vk::WriteDescriptorSet objDescWriteDS{};
-        objDescWriteDS
-            .setDstSet(this->descriptorSet.scene.get())
-            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
-            .setDstBinding(1)
-            .setBufferInfo(objDescDescriptorInfo);
-
-        vk::DescriptorBufferInfo materialsDescriptorInfo{};
-        materialsDescriptorInfo
-            .setBuffer(scene->materialBuffer.handle.get())
-            .setRange(VK_WHOLE_SIZE);
-
-        vk::WriteDescriptorSet materialsWriteDS{};
-        materialsWriteDS
-            .setDstSet(this->descriptorSet.scene.get())
-            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
-            .setDstBinding(2)
-            .setBufferInfo(materialsDescriptorInfo);
-
-        std::vector<vk::DescriptorImageInfo> texturesDescriptorInfo{};
-        for (const auto& texture : scene->textures)
-        {
-            texturesDescriptorInfo.push_back(texture->descriptor);
-        }
-
-        vk::WriteDescriptorSet texturesWriteDS{};
-        texturesWriteDS
-            .setDstSet(this->descriptorSet.scene.get())
-            .setDstBinding(3)
-            .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-            .setImageInfo(texturesDescriptorInfo);
-
-        this->device.get().updateDescriptorSets(tlasWriteDS, nullptr);
-        this->device.get().updateDescriptorSets(objDescWriteDS, nullptr);
-        this->device.get().updateDescriptorSets(materialsWriteDS, nullptr);
-        if (texturesDescriptorInfo.size())
-        {
-            this->device.get().updateDescriptorSets(texturesWriteDS, nullptr);
         }
     }
 
@@ -269,28 +161,20 @@ namespace vlb {
                     | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind)
                 );
 
-        {
-            auto sceneLayout = this->sceneManager.getScene()->getDescriptorSetLayout();
-            auto sceneDS = this->device.get().allocateDescriptorSetsUnique(
+        auto sceneLayout = this->sceneManager.getScene()->getDescriptorSetLayout();
+        this->descriptorSet.scene = std::move(this->device.get().allocateDescriptorSetsUnique(
                     vk::DescriptorSetAllocateInfo{}
                     .setDescriptorPool(this->descriptorPool.get())
                     .setSetLayouts(sceneLayout)
-                    );
+                    ).front());
 
-            this->descriptorSet.scene = std::move(sceneDS.front());
-        }
-
-        {
-            auto resultImageDS = this->device.get().allocateDescriptorSetsUnique(
+        this->descriptorSet.resultImage = std::move(this->device.get().allocateDescriptorSetsUnique(
                     vk::DescriptorSetAllocateInfo{}
                     .setDescriptorPool(this->descriptorPool.get())
                     .setSetLayouts(descriptorSetLayout.resultImage.get())
-                    );
+                    ).front());
 
-            this->descriptorSet.resultImage = std::move(resultImageDS.front());
-        }
-
-        updateSceneDescriptorSets();
+        this->sceneManager.getScene()->updateSceneDescriptorSets(this->descriptorSet.scene.get());
         updateResultImageDescriptorSets();
     }
 
@@ -320,15 +204,6 @@ namespace vlb {
                 0,
                 descriptorSets,
                 nullptr
-                );
-
-        static int frameNumber = 0;
-        shader::PushConstant pc { this->ui.getLightIntensity(), static_cast<int>(frameNumber++) };
-
-        commandBuffer->pushConstants(
-                this->pipelineLayout.get(),
-                vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eRaygenKHR,
-                0, sizeof(pc), &pc
                 );
 
         auto[width, height, depth] = this->surfaceExtent;
@@ -415,6 +290,12 @@ namespace vlb {
         this->queue.graphics.submit(submitInfo, this->inFlightFences[this->currentFrame]);
 
         Renderer::present(imageIndex);
+    }
+
+    void Raytracer::createShaderBindingTable()
+    {
+        std::vector<std::string> keys = { "rayGen", "miss", "hit", "shadow" };
+        this->sbt = Application::createShaderBindingTable(this->shaderGroupsCount, keys, this->pipeline.get());
     }
 
     void Raytracer::handleSceneChange()

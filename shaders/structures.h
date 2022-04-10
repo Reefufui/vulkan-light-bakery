@@ -10,21 +10,6 @@ namespace shader {
     using vec2 = glm::vec2;
 #endif
 
-#ifdef __cplusplus
-    struct
-#else
-    layout(push_constant) uniform
-#endif
-        PushConstant
-        {
-            float lightIntensity;
-            int frameNumber;
-        }
-#ifndef __cplusplus
-    constants
-#endif
-        ;
-
     struct InstanceInfo
     {
         uint64_t vertexBufferAddress;

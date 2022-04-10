@@ -348,6 +348,11 @@ namespace vlb {
 
     vk::UniqueShaderModule Application::createShaderModule(const std::string& filename)
     {
+        return createShaderModule(this->device.get(), filename);
+    }
+
+    vk::UniqueShaderModule Application::createShaderModule(vk::Device& device, const std::string& filename)
+    {
         std::ifstream spvFile(filename, std::ios::ate | std::ios::binary);
 
         if (!spvFile.is_open())
@@ -363,7 +368,7 @@ namespace vlb {
             .read(code.data(), fileSize);
         spvFile.close();
 
-        return this->device.get().createShaderModuleUnique(
+        return device.createShaderModuleUnique(
                 vk::ShaderModuleCreateInfo{}
                 .setCodeSize(code.size())
                 .setPCode(reinterpret_cast<const uint32_t*>(code.data())) );
@@ -442,7 +447,7 @@ namespace vlb {
                 .setArrayLayers(1)
                 .setSamples(vk::SampleCountFlagBits::e1)
                 .setTiling(vk::ImageTiling::eOptimal)
-                .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage)
+                .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eStorage)
                 .setInitialLayout(vk::ImageLayout::eUndefined)
                 .setSharingMode(vk::SharingMode::eConcurrent)
                 .setQueueFamilyIndices(queueFamilyIndices)
@@ -567,6 +572,55 @@ namespace vlb {
 #ifdef DEBUG
         initDebugReportCallback();
 #endif
+    }
+
+    Application::ShaderBindingTable Application::createShaderBindingTable(uint32_t shaderGroupsCount, std::vector<std::string>& keys, vk::Pipeline& pipeline)
+    {
+        return createShaderBindingTable(this->device.get(), this->physicalDevice, shaderGroupsCount, keys, pipeline);
+    }
+
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t shaderGroupsCount,
+            std::vector<std::string>& keys, vk::Pipeline& pipeline)
+    {
+        Application::ShaderBindingTable sbt{};
+
+        auto deviceProperties = physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+        auto RTPipelineProperties = deviceProperties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+
+        auto alignedSize = [](uint32_t value, uint32_t alignment)
+        {
+            return (value + alignment - 1) & ~(alignment - 1);
+        };
+
+        const uint32_t handleSize        = RTPipelineProperties.shaderGroupHandleSize;
+        const uint32_t handleSizeAligned = alignedSize(handleSize, RTPipelineProperties.shaderGroupHandleAlignment);
+        const uint32_t sbtSize           = shaderGroupsCount * handleSizeAligned;
+
+        const vk::BufferUsageFlags    usg = vk::BufferUsageFlagBits::eShaderBindingTableKHR
+            | vk::BufferUsageFlagBits::eTransferSrc
+            | vk::BufferUsageFlagBits::eShaderDeviceAddress;
+
+        const vk::MemoryPropertyFlags mem = vk::MemoryPropertyFlagBits::eHostVisible
+            | vk::MemoryPropertyFlagBits::eHostCoherent;
+
+        std::vector<uint8_t> shaderHandles(sbtSize);
+        auto result = device.getRayTracingShaderGroupHandlesKHR(pipeline, 0, shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to get ray tracing shader group handles");
+        }
+
+        for (auto i{0}; i < keys.size(); ++i)
+        {
+            sbt.storage.push_back(createBuffer(device, physicalDevice, handleSize, usg, mem, shaderHandles.data() + i * handleSizeAligned));
+            sbt.entries[keys[i]] = vk::StridedDeviceAddressRegionKHR{};
+            sbt.entries[keys[i]]
+                .setDeviceAddress(sbt.storage.back().deviceAddress)
+                .setStride(handleSizeAligned)
+                .setSize(handleSizeAligned);
+        }
+
+        return std::move(sbt);
     }
 
 }

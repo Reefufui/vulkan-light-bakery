@@ -24,17 +24,19 @@ void main()
 {
     if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height) return;
 
-    const ivec2 xy        = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    const vec3  dir       = toVector(x2phi(xy.x, constants.width), y2theta(xy.y, constants.height));
-    const vec3  color     = 255.0f * imageLoad(environmentMap, xy).xyz;
+    const ivec2 xy    = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    const vec3  dir   = toVector(x2phi(xy.x, constants.width), y2theta(xy.y, constants.height));
+    vec3        color = vec3(0.f);
     const float normConst = calcNormalizationConst(constants.height, constants.width);
 
     for (int l = 0; l < 4; l++)
     {
         for (int m = -l; m < l + 1; m++)
         {
-            coeffs[l * (l + 1) + m] += normConst * SH(l, m, dir) * color;
+            color += coeffs[l * (l + 1) + m] * SH(l, m, dir) * 10.0f;
         }
     }
+
+    imageStore(environmentMap, xy, vec4(color, 1.f));
 }
 

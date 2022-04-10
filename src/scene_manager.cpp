@@ -6,7 +6,7 @@
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
-//#include <glm/gtx/string_cast.hpp> // Debug
+#include <glm/gtx/string_cast.hpp> // Debug
 
 #include <iostream>
 #include <filesystem>
@@ -106,8 +106,79 @@ namespace vlb {
         return this->descriptorSetLayout.get();
     }
 
+    Scene Scene_t::updateSceneDescriptorSets(vk::DescriptorSet targetDS)
+    {
+        vk::WriteDescriptorSetAccelerationStructureKHR tlasDescriptorInfo{};
+        tlasDescriptorInfo
+            .setAccelerationStructures(this->tlas->handle.get());
+
+        vk::WriteDescriptorSet tlasWriteDS{};
+        tlasWriteDS
+            .setDstSet(targetDS)
+            .setDstBinding(0)
+            .setDescriptorCount(1)
+            .setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+            .setPNext(&tlasDescriptorInfo);
+
+        vk::DescriptorBufferInfo objDescDescriptorInfo{};
+        objDescDescriptorInfo
+            .setBuffer(this->instanceInfoBuffer.handle.get())
+            .setRange(VK_WHOLE_SIZE);
+
+        vk::WriteDescriptorSet objDescWriteDS{};
+        objDescWriteDS
+            .setDstSet(targetDS)
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(1)
+            .setBufferInfo(objDescDescriptorInfo);
+
+        vk::DescriptorBufferInfo materialsDescriptorInfo{};
+        materialsDescriptorInfo
+            .setBuffer(this->materialBuffer.handle.get())
+            .setRange(VK_WHOLE_SIZE);
+
+        vk::WriteDescriptorSet materialsWriteDS{};
+        materialsWriteDS
+            .setDstSet(targetDS)
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(2)
+            .setBufferInfo(materialsDescriptorInfo);
+
+        std::vector<vk::DescriptorImageInfo> texturesDescriptorInfo{};
+        for (const auto& texture : this->textures)
+        {
+            texturesDescriptorInfo.push_back(texture->descriptor);
+        }
+
+        vk::WriteDescriptorSet texturesWriteDS{};
+        texturesWriteDS
+            .setDstSet(targetDS)
+            .setDstBinding(3)
+            .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+            .setImageInfo(texturesDescriptorInfo);
+
+        this->device.updateDescriptorSets(tlasWriteDS, nullptr);
+        this->device.updateDescriptorSets(objDescWriteDS, nullptr);
+        this->device.updateDescriptorSets(materialsWriteDS, nullptr);
+        if (texturesDescriptorInfo.size())
+        {
+            this->device.updateDescriptorSets(texturesWriteDS, nullptr);
+        }
+
+        return shared_from_this();
+    }
+
+
     std::array<glm::vec3, 8> Scene_t::getBoundingBox()
     {
+        for (int i = 0; i < 8; ++i)
+        {
+            bool bigX = i & (1 << 2);
+            bool bigY = i & (1 << 1);
+            bool bigZ = i & (1 << 0);
+            this->boundingBox[i] = glm::vec3(XxYyZz[1 - (int)bigX], XxYyZz[3 - (int)bigY], XxYyZz[5 - (int)bigZ]);
+        }
+
         return this->boundingBox;
     }
 
@@ -659,11 +730,6 @@ namespace vlb {
         {
             const auto& node = this->model.nodes[nodeIndex];
             loadNode(nullptr, node, nodeIndex);
-        }
-
-        for (auto x : this->XxYyZz)
-        {
-            std::cout << x << "\n";
         }
 
         return shared_from_this();

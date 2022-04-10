@@ -23,6 +23,7 @@ layout(buffer_reference, scalar) buffer Vertices  { Vertex v[]; };
 layout(buffer_reference, scalar) buffer Indices   { ivec3  i[]; };
 
 vec3 lightPos = vec3(0.0f, 10.0f, 0.0f);
+float lightIntensity = 1.0f;
 
 vec4 rgb2srgb(vec4 linearRGB)
 {
@@ -67,17 +68,16 @@ void main()
 
     inShadow = true;
 
-    vec4 color = vec4(0.05f) + constants.lightIntensity * diffuse;
+    vec4 color = vec4(0.05f) + diffuse;
 
     int textureIdx = int(material.textures.baseColor.index);
-    if (textureIdx == -1)
-    {
-        int colorIdx = int(gl_InstanceCustomIndexEXT);
-        color = color * colors[colorIdx % 7];
-    }
-    else
+    if (textureIdx != -1)
     {
         color = color * texture(textures[textureIdx], uv);
+    }
+    else if (material.factors.baseColor != vec4(0.0f))
+    {
+        color = material.factors.baseColor * color;
     }
 
     payLoad = rgb2srgb(color).rgb;
