@@ -35,7 +35,7 @@ namespace vlb {
         sceneManager.setSceneIndex(0);
         auto scene = sceneManager.getScene();
 
-        this->probesCount3D = glm::vec3(2, 2, 2);
+        this->probesCount3D = glm::vec3(7, 7, 7);
         this->probePositions = probePositionsFromBoudingBox(scene->getBoundingBox());
         this->envMapGenerator.setScene(std::move(scene));
         this->envMapGenerator.passVulkanResources(res2);
@@ -66,6 +66,7 @@ namespace vlb {
                 {
                     position[dim] += step[dim];
                     newPositions.push_back(position);
+                    std::cout << position[0] << " " << position[1] << " " << position[2] << "\n";
                 }
             }
             positions = std::move(newPositions);
@@ -260,20 +261,23 @@ namespace vlb {
 
     void LightBaker::bake()
     {
-        Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, {200, 200, 1});
+        Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, {500, 250, 1});
         //Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, "test.png");
         createBakingPipeline();
 
-        for (glm::vec3 pos : this->probePositions)
+        int counter = 0;
+        //for (glm::vec3 pos : this->probePositions)
+        glm::vec3 pos = glm::vec3(2.0f, 2.0f, 0.0f);
         {
             this->envMapGenerator.getMap(pos);
             dispatchBakingKernel();
             void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 16 * 3 * sizeof(float));
             float* coeffs = static_cast<float*>(dataPtr);
             device.get().unmapMemory(SHCoeffs.memory.get());
-        }
 
-        this->envMapGenerator.saveImage();
+            std::string name = std::to_string(counter++) + ".png";
+            this->envMapGenerator.saveImage(name);
+        }
     }
 }
 

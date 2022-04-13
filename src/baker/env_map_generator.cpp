@@ -64,7 +64,7 @@ namespace vlb {
         return this->envMapExtent;
     }
 
-    void EnvMapGenerator::saveImage()
+    void EnvMapGenerator::saveImage(const std::string& imageName)
     {
         using enum vk::BufferUsageFlagBits;
         using enum vk::MemoryPropertyFlagBits;
@@ -101,7 +101,7 @@ namespace vlb {
         Application::flushCommandBuffer(this->device, this->commandPool.transfer, cmd, this->queue.transfer);
 
         void* dataPtr = this->device.mapMemory(staging.memory.get(), 0, size);
-        stbi_write_png("result.png", this->envMapExtent.width, this->envMapExtent.height, 4, (void*)dataPtr, this->envMapExtent.width * 4);
+        stbi_write_png(imageName.c_str(), this->envMapExtent.width, this->envMapExtent.height, 4, (void*)dataPtr, this->envMapExtent.width * 4);
         device.unmapMemory(staging.memory.get());
     }
 
@@ -226,15 +226,21 @@ namespace vlb {
         {
             eRaygen,
             eMiss,
-            eClosestHit,
             eShadow,
+            eClosestHit,
             eShaderGroupCount
         };
-        this->shaderGroupsCount = static_cast<uint32_t>(StageIndices::eShaderGroupCount);
         std::array<vk::PipelineShaderStageCreateInfo, StageIndices::eShaderGroupCount> shaderStages{};
 
         std::vector<vk::UniqueShaderModule> shaderModules{};
         std::vector<vk::RayTracingShaderGroupCreateInfoKHR> shaderGroups{};
+
+        vk::RayTracingShaderGroupCreateInfoKHR groupTemplate{};
+        groupTemplate
+            .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+            .setClosestHitShader(VK_SHADER_UNUSED_KHR)
+            .setAnyHitShader(VK_SHADER_UNUSED_KHR)
+            .setIntersectionShader(VK_SHADER_UNUSED_KHR);
 
         shaderModules.push_back(Application::createShaderModule(this->device, "shaders/env_map.rgen.spv"));
         shaderStages[StageIndices::eRaygen] = vk::PipelineShaderStageCreateInfo{};
@@ -242,14 +248,7 @@ namespace vlb {
             .setStage(vk::ShaderStageFlagBits::eRaygenKHR)
             .setModule(shaderModules.back().get())
             .setPName("main");
-        shaderGroups.push_back(
-                vk::RayTracingShaderGroupCreateInfoKHR{}
-                .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-                .setGeneralShader(StageIndices::eRaygen)
-                .setClosestHitShader(VK_SHADER_UNUSED_KHR)
-                .setAnyHitShader(VK_SHADER_UNUSED_KHR)
-                .setIntersectionShader(VK_SHADER_UNUSED_KHR)
-                );
+        shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eRaygen));
 
         shaderModules.push_back(Application::createShaderModule(this->device, "shaders/basic.rmiss.spv"));
         shaderStages[StageIndices::eMiss] = vk::PipelineShaderStageCreateInfo{};
@@ -257,14 +256,15 @@ namespace vlb {
             .setStage(vk::ShaderStageFlagBits::eMissKHR)
             .setModule(shaderModules.back().get())
             .setPName("main");
-        shaderGroups.push_back(
-                vk::RayTracingShaderGroupCreateInfoKHR{}
-                .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-                .setGeneralShader(StageIndices::eMiss)
-                .setClosestHitShader(VK_SHADER_UNUSED_KHR)
-                .setAnyHitShader(VK_SHADER_UNUSED_KHR)
-                .setIntersectionShader(VK_SHADER_UNUSED_KHR)
-                );
+        shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eMiss));
+
+        shaderModules.push_back(Application::createShaderModule(this->device, "shaders/shadow.rmiss.spv"));
+        shaderStages[StageIndices::eShadow] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eShadow]
+            .setStage(vk::ShaderStageFlagBits::eMissKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eShadow));
 
         shaderModules.push_back(Application::createShaderModule(this->device, "shaders/basic.rchit.spv"));
         shaderStages[StageIndices::eClosestHit] = vk::PipelineShaderStageCreateInfo{};
@@ -273,27 +273,10 @@ namespace vlb {
             .setModule(shaderModules.back().get())
             .setPName("main");
         shaderGroups.push_back(
-                vk::RayTracingShaderGroupCreateInfoKHR{}
+                groupTemplate
                 .setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
                 .setGeneralShader(VK_SHADER_UNUSED_KHR)
                 .setClosestHitShader(StageIndices::eClosestHit)
-                .setAnyHitShader(VK_SHADER_UNUSED_KHR)
-                .setIntersectionShader(VK_SHADER_UNUSED_KHR)
-                );
-
-        shaderModules.push_back(Application::createShaderModule(this->device, "shaders/shadow.rmiss.spv"));
-        shaderStages[StageIndices::eShadow] = vk::PipelineShaderStageCreateInfo{};
-        shaderStages[StageIndices::eShadow]
-            .setStage(vk::ShaderStageFlagBits::eMissKHR)
-            .setModule(shaderModules.back().get())
-            .setPName("main");
-        shaderGroups.push_back(
-                vk::RayTracingShaderGroupCreateInfoKHR{}
-                .setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-                .setGeneralShader(StageIndices::eShadow)
-                .setClosestHitShader(VK_SHADER_UNUSED_KHR)
-                .setAnyHitShader(VK_SHADER_UNUSED_KHR)
-                .setIntersectionShader(VK_SHADER_UNUSED_KHR)
                 );
 
         auto[result, p] = this->device.createRayTracingPipelineKHRUnique(nullptr, nullptr,
@@ -334,8 +317,7 @@ namespace vlb {
         createRayTracingPipeline();
         this->scene->updateSceneDescriptorSets(this->sceneDS.get());
 
-        std::vector<std::string> keys = { "rayGen", "miss", "hit", "shadow" };
-        this->sbt = Application::createShaderBindingTable(this->device, this->physicalDevice, this->shaderGroupsCount, keys, this->pipeline.get());
+        this->sbt = Application::createShaderBindingTable(this->device, this->physicalDevice, this->pipeline.get());
     }
 
     void EnvMapGenerator::getMap(glm::vec3 position)
@@ -364,9 +346,9 @@ namespace vlb {
 
         auto[width, height, depth] = this->envMapExtent;
         cmd.traceRaysKHR(
-                this->sbt.entries["rayGen"],
-                this->sbt.entries["miss"],
-                this->sbt.entries["hit"],
+                this->sbt.strides[0],
+                this->sbt.strides[1],
+                this->sbt.strides[2],
                 {},
                 width, height, depth
                 );

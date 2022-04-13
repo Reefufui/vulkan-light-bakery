@@ -574,51 +574,80 @@ namespace vlb {
 #endif
     }
 
-    Application::ShaderBindingTable Application::createShaderBindingTable(uint32_t shaderGroupsCount, std::vector<std::string>& keys, vk::Pipeline& pipeline)
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Pipeline& pipeline)
     {
-        return createShaderBindingTable(this->device.get(), this->physicalDevice, shaderGroupsCount, keys, pipeline);
+        return createShaderBindingTable(this->device.get(), this->physicalDevice, pipeline);
     }
 
-    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, uint32_t shaderGroupsCount,
-            std::vector<std::string>& keys, vk::Pipeline& pipeline)
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& pipeline)
     {
         Application::ShaderBindingTable sbt{};
 
-        auto deviceProperties = physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-        auto RTPipelineProperties = deviceProperties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+        const auto deviceProperties = physicalDevice.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+        const auto RTPipelineProperties = deviceProperties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
-        auto alignedSize = [](uint32_t value, uint32_t alignment)
+        auto handleAlignment = [RTPipelineProperties](const uint32_t& value)
         {
+            const uint32_t alignment = RTPipelineProperties.shaderGroupHandleAlignment;
             return (value + alignment - 1) & ~(alignment - 1);
         };
 
-        const uint32_t handleSize        = RTPipelineProperties.shaderGroupHandleSize;
-        const uint32_t handleSizeAligned = alignedSize(handleSize, RTPipelineProperties.shaderGroupHandleAlignment);
-        const uint32_t sbtSize           = shaderGroupsCount * handleSizeAligned;
+        const uint32_t groupCount = 1u + 2u + 1u; // raygen + miss + shadow + chit
+        const uint32_t dataSize   = groupCount * RTPipelineProperties.shaderGroupHandleSize;
+        std::vector<uint8_t> handles(dataSize);
+        device.getRayTracingShaderGroupHandlesKHR(pipeline, 0, groupCount, dataSize, handles.data());
+
+        auto baseAlignment = [RTPipelineProperties](const uint32_t& value)
+        {
+            const uint32_t alignment = RTPipelineProperties.shaderGroupBaseAlignment;
+            return (value + alignment - 1) & ~(alignment - 1);
+        };
+
+        const uint32_t groupSize = handleAlignment(RTPipelineProperties.shaderGroupHandleSize);
 
         const vk::BufferUsageFlags    usg = vk::BufferUsageFlagBits::eShaderBindingTableKHR
             | vk::BufferUsageFlagBits::eTransferSrc
             | vk::BufferUsageFlagBits::eShaderDeviceAddress;
-
         const vk::MemoryPropertyFlags mem = vk::MemoryPropertyFlagBits::eHostVisible
             | vk::MemoryPropertyFlagBits::eHostCoherent;
+        const vk::DeviceSize          size = baseAlignment(groupSize) + baseAlignment(2 * groupSize) + baseAlignment(groupSize);
 
-        std::vector<uint8_t> shaderHandles(sbtSize);
-        auto result = device.getRayTracingShaderGroupHandlesKHR(pipeline, 0, shaderGroupsCount, shaderHandles.size(), shaderHandles.data());
-        if (result != vk::Result::eSuccess)
-        {
-            throw std::runtime_error("failed to get ray tracing shader group handles");
-        }
+        sbt.buffer = createBuffer(device, physicalDevice, size, usg, mem);
 
-        for (auto i{0}; i < keys.size(); ++i)
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // raygen
+                .setDeviceAddress(sbt.buffer.deviceAddress)
+                .setStride(baseAlignment(groupSize))
+                .setSize(baseAlignment(groupSize))
+                );
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // miss + shadow miss --> groupSize * 2
+                .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(groupSize))
+                .setStride(groupSize)
+                .setSize(baseAlignment(2 * groupSize))
+                );
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // hit
+                .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(3 * groupSize))
+                .setStride(groupSize)
+                .setSize(baseAlignment(groupSize))
+                );
+
+        uint8_t* dataPtr = reinterpret_cast<uint8_t*>(device.mapMemory(sbt.buffer.memory.get(), 0, groupCount * groupSize));
         {
-            sbt.storage.push_back(createBuffer(device, physicalDevice, handleSize, usg, mem, shaderHandles.data() + i * handleSizeAligned));
-            sbt.entries[keys[i]] = vk::StridedDeviceAddressRegionKHR{};
-            sbt.entries[keys[i]]
-                .setDeviceAddress(sbt.storage.back().deviceAddress)
-                .setStride(handleSizeAligned)
-                .setSize(handleSizeAligned);
+            const uint32_t handleSize = RTPipelineProperties.shaderGroupHandleSize;
+            uint8_t* ptr{nullptr};
+
+            ptr = dataPtr;
+            memcpy(ptr, handles.data() + 0 * handleSize, handleSize); // raygen
+
+            ptr = dataPtr + sbt.strides[0].size;
+            memcpy(ptr, handles.data() + 1 * handleSize, handleSize); // miss
+
+            ptr = dataPtr + sbt.strides[0].size + sbt.strides[1].stride;
+            memcpy(ptr, handles.data() + 2 * handleSize, handleSize); // shadow
+
+            ptr = dataPtr + sbt.strides[0].size + sbt.strides[1].size;
+            memcpy(ptr, handles.data() + 3 * handleSize, handleSize); // chit
         }
+        device.unmapMemory(sbt.buffer.memory.get());
 
         return std::move(sbt);
     }

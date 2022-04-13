@@ -46,7 +46,6 @@ namespace vlb {
             vk::UniquePipeline            pipeline;
             vk::UniquePipelineLayout      pipelineLayout;
 
-            uint32_t shaderGroupsCount;
             Application::ShaderBindingTable sbt;
 
             void createRayTracingPipeline();
@@ -65,7 +64,7 @@ namespace vlb {
             Application::Image& createImage(vk::Format imageFormat, const char* filename);
             Application::Image& getImage();
             vk::Extent3D        getImageExtent();
-            void                saveImage();
+            void                saveImage(const std::string& imageName);
     };
 }
 

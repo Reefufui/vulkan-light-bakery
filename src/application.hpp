@@ -44,8 +44,8 @@ namespace vlb {
 
             struct ShaderBindingTable
             {
-                std::unordered_map<std::string, vk::StridedDeviceAddressRegionKHR> entries;
-                std::vector<Buffer> storage;
+                std::vector<vk::StridedDeviceAddressRegionKHR> strides;
+                Application::Buffer                            buffer;
             };
 
         protected:
@@ -97,7 +97,7 @@ namespace vlb {
             Buffer                 createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
             Image                  createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
-            ShaderBindingTable     createShaderBindingTable(uint32_t shaderGroupsCount, std::vector<std::string>& keys, vk::Pipeline& pipeline);
+            ShaderBindingTable     createShaderBindingTable(vk::Pipeline& pipeline);
 
         private:
 
@@ -150,8 +150,6 @@ namespace vlb {
             static ShaderBindingTable createShaderBindingTable(
                     vk::Device& device,
                     vk::PhysicalDevice& physicalDevice,
-                    uint32_t shaderGroupsCount,
-                    std::vector<std::string>& keys,
                     vk::Pipeline& pipeline);
 
             Application(bool isGraphical = true);
