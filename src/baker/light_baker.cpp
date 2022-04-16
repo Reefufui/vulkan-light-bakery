@@ -2,73 +2,83 @@
 
 #include "light_baker.hpp"
 
+#include <glm/gtx/string_cast.hpp> // Debug
+
 namespace vlb {
 
-    LightBaker::LightBaker(std::string& sceneName)
+    LightBaker::LightBaker(std::string& assetName)
     {
-        auto res = Scene_t::VulkanResources
+        if (assetName.find(".gltf") != std::string::npos || assetName.find(".glb") != std::string::npos)
         {
-            this->physicalDevice,
-                this->device.get(),
-                this->queue.transfer,
-                this->commandPool.transfer.get(),
-                this->queue.graphics,
-                this->commandPool.graphics.get(),
-                this->queue.compute,
-                this->commandPool.compute.get(),
-                static_cast<uint32_t>(1)
-        };
+            auto res = Scene_t::VulkanResources
+            {
+                this->physicalDevice,
+                    this->device.get(),
+                    this->queue.transfer,
+                    this->commandPool.transfer.get(),
+                    this->queue.graphics,
+                    this->commandPool.graphics.get(),
+                    this->queue.compute,
+                    this->commandPool.compute.get(),
+                    static_cast<uint32_t>(1)
+            };
+            auto res2 = EnvMapGenerator::VulkanResources
+            {
+                this->physicalDevice,
+                    this->device.get(),
+                    this->queue.transfer,
+                    this->commandPool.transfer.get(),
+                    this->queue.graphics,
+                    this->commandPool.graphics.get(),
+            };
+            this->envMapGenerator.passVulkanResources(res2);
 
-        auto res2 = EnvMapGenerator::VulkanResources
+            {
+                SceneManager sceneManager{};
+                sceneManager.passVulkanResources(res);
+                sceneManager.pushScene(assetName);
+                sceneManager.setSceneIndex(0);
+                auto scene = sceneManager.getScene();
+                this->envMapGenerator.setScene(std::move(scene));
+                this->probePositions = probePositionsFromBoudingBox(scene->getBounds());
+            }
+
+            this->envMapGenerator.setupVukanRaytracing();
+
+            this->envMapGenerator.setEnvShpereRadius(100u);
+            this->envMapGenerator.createImage();
+
+            this->probesCount3D = glm::vec3(5, 5, 5);
+        }
+        else
         {
-            this->physicalDevice,
-                this->device.get(),
-                this->queue.transfer,
-                this->commandPool.transfer.get(),
-                this->queue.graphics,
-                this->commandPool.graphics.get(),
-        };
-
-        SceneManager sceneManager{};
-        sceneManager.passVulkanResources(res);
-        sceneManager.pushScene(sceneName);
-        sceneManager.setSceneIndex(0);
-        auto scene = sceneManager.getScene();
-
-        this->probesCount3D = glm::vec3(2, 2, 2);
-        this->probePositions = probePositionsFromBoudingBox(scene->getBoundingBox());
-        this->envMapGenerator.setScene(std::move(scene));
-        this->envMapGenerator.passVulkanResources(res2);
-        this->envMapGenerator.setupVukanRaytracing();
+            this->probePositions.push_back(glm::vec3(0.0f));
+            this->envMapGenerator.createImage(assetName.c_str());
+        }
     }
 
     LightBaker::~LightBaker()
     {
     }
 
-    std::vector<glm::vec3> LightBaker::probePositionsFromBoudingBox(std::array<glm::vec3, 8> boundingBox) // TODO
+    std::vector<glm::vec3> LightBaker::probePositionsFromBoudingBox(std::array<glm::vec3, 2> bounds)
     {
         std::vector<glm::vec3> positions(0);
-        positions.push_back(boundingBox[0]);
+        positions.push_back(bounds[0]);
 
-        const glm::vec3 bound{boundingBox[4].x, boundingBox[2].y, boundingBox[1].z};
-        const auto xStep = (bound.x - boundingBox[0].x) / ((float)this->probesCount3D.x - 1);
-        const auto yStep = (bound.y - boundingBox[0].y) / ((float)this->probesCount3D.y - 1);
-        const auto zStep = (bound.z - boundingBox[0].z) / ((float)this->probesCount3D.z - 1);
-        const glm::vec3 step{xStep, yStep, zStep};
+        const glm::vec3 step = (bounds[1] - bounds[0]) / (probesCount3D - 1.f);
 
         for (int dim = 0; dim < 3; ++dim)
         {
-            auto newPositions = positions;
-            for (auto position : positions)
+            auto positionsCopy = positions;
+            for (auto position : positionsCopy)
             {
                 for (int i = 0; i < this->probesCount3D[dim] - 1; ++i)
                 {
                     position[dim] += step[dim];
-                    newPositions.push_back(position);
+                    positions.push_back(position);
                 }
             }
-            positions = std::move(newPositions);
         }
 
         return positions;
@@ -83,14 +93,14 @@ namespace vlb {
 
         float init[16 * 3] = {0.f};
         /*
-        float init[16 * 3] = {
-            -1.028, 0.779, -0.275, 0.601, -0.256,
-            1.891, -1.658, -0.370, -0.772,
-            -0.591, -0.713, 0.191, 1.206, -0.587,
-            -0.051, 1.543, -0.818, 1.482,
-            -1.119, 0.559, 0.433, -0.680, -1.815,
-            -0.915, 1.345, 1.572, -0.622};
-            */
+           float init[16 * 3] = {
+           -1.028, 0.779, -0.275, 0.601, -0.256,
+           1.891, -1.658, -0.370, -0.772,
+           -0.591, -0.713, 0.191, 1.206, -0.587,
+           -0.051, 1.543, -0.818, 1.482,
+           -1.119, 0.559, 0.433, -0.680, -1.815,
+           -0.915, 1.345, 1.572, -0.622};
+           */
 
         this->SHCoeffs = createBuffer(16 * 3 * sizeof(float), usg, mem, init);
 
@@ -260,20 +270,21 @@ namespace vlb {
 
     void LightBaker::bake()
     {
-        Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, {200, 200, 1});
-        //Image& image = this->envMapGenerator.createImage(vk::Format::eR8G8B8A8Unorm, "test.png");
         createBakingPipeline();
 
+        int counter = 0;
         for (glm::vec3 pos : this->probePositions)
         {
+            std::cout << glm::to_string(pos) << "\n";
             this->envMapGenerator.getMap(pos);
             dispatchBakingKernel();
             void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 16 * 3 * sizeof(float));
             float* coeffs = static_cast<float*>(dataPtr);
             device.get().unmapMemory(SHCoeffs.memory.get());
-        }
 
-        this->envMapGenerator.saveImage();
+            std::string name = std::to_string(counter++) + ".png";
+            this->envMapGenerator.saveImage(name);
+        }
     }
 }
 

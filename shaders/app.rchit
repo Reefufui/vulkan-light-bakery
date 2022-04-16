@@ -22,7 +22,7 @@ layout(set = 0, binding = 3) uniform sampler2D textures[];
 layout(buffer_reference, scalar) buffer Vertices  { Vertex v[]; };
 layout(buffer_reference, scalar) buffer Indices   { ivec3  i[]; };
 
-vec3 lightPos = vec3(0.5f, 4.5f, 0.5f);
+vec3 lightPos = vec3(0.0f, 10.0f, 0.0f);
 float lightIntensity = 1.0f;
 
 vec4 rgb2srgb(vec4 linearRGB)
@@ -64,41 +64,11 @@ void main()
     const vec2 uv = v0.uv0 * bcCoords.x + v1.uv0 * bcCoords.y + v2.uv0 * bcCoords.z;
 
     const vec3 shadowRayDir = normalize(lightPos - worldPos);
-    //const vec3 shadowRayDir = normalize(lightPos);
-    const float diffuse = max(dot(worldNrm, shadowRayDir), 0.0f);
+    const vec4 diffuse = vec4(1.0f) * max(dot(worldNrm, shadowRayDir), 0.0f);
 
-    vec4 color = vec4(1.0f);
     inShadow = true;
 
-    // Tracing shadow ray only if the light is visible from the surface
-    if (dot(worldNrm, shadowRayDir) > 0)
-    {
-        float tMin   = 0.001;
-        float tMax   = length(lightPos - worldPos);
-        vec3  origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
-        vec3  rayDir = shadowRayDir;
-        uint  flags  = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-
-        traceRayEXT(topLevelAS,  // acceleration structure
-                flags,       // rayFlags
-                0xFF,        // cullMask
-                0,           // sbtRecordOffset
-                0,           // sbtRecordStride
-                1,           // missIndex
-                origin,      // ray origin
-                tMin,        // ray min range
-                rayDir,      // ray direction
-                tMax,        // ray max range
-                1            // payload (location = 1)
-                );
-    }
-
-    if (inShadow)
-    {
-        color = vec4(0.0f);
-    }
-
-    color *= diffuse;
+    vec4 color = vec4(0.05f) + diffuse;
 
     int textureIdx = int(material.textures.baseColor.index);
     if (textureIdx != -1)

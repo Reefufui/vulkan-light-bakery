@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <utility>
 #include <array>
+#include <limits>
 
 namespace vlb {
 
@@ -169,17 +170,9 @@ namespace vlb {
     }
 
 
-    std::array<glm::vec3, 8> Scene_t::getBoundingBox()
+    std::array<glm::vec3, 2> Scene_t::getBounds()
     {
-        for (int i = 0; i < 8; ++i)
-        {
-            bool bigX = i & (1 << 2);
-            bool bigY = i & (1 << 1);
-            bool bigZ = i & (1 << 0);
-            this->boundingBox[i] = glm::vec3(XxYyZz[1 - (int)bigX], XxYyZz[3 - (int)bigY], XxYyZz[5 - (int)bigZ]);
-        }
-
-        return this->boundingBox;
+        return this->bounds;
     }
 
     auto Scene_t::Primitive_t::getGeometry()
@@ -230,7 +223,8 @@ namespace vlb {
         auto[uv0Buffer, uv0ByteStride, uv0ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_0");
         auto[uv1Buffer, uv1ByteStride, uv1ComponentType] = loadVertexAttribute(primitive, "TEXCOORD_1");
 
-        std::array<float, 6> XxYyZzBoundingBox{};
+        glm::vec3 xyz{ std::numeric_limits<float>::max()};
+        glm::vec3 XYZ{-std::numeric_limits<float>::max()};
 
         for (uint32_t v{}; v < vertexCount; ++v)
         {
@@ -239,17 +233,19 @@ namespace vlb {
             if (uv0Buffer) vertices[v].uv0      = glm::make_vec2(                          &uv0Buffer[v * uv0ByteStride]);
             if (uv1Buffer) vertices[v].uv1      = glm::make_vec2(                          &uv1Buffer[v * uv1ByteStride]);
 
-            const glm::vec4 position = vertices[v].position;
-            XxYyZzBoundingBox[0] = std::max(position.x, XxYyZzBoundingBox[0]);
-            XxYyZzBoundingBox[1] = std::min(position.x, XxYyZzBoundingBox[1]);
-            XxYyZzBoundingBox[2] = std::max(position.y, XxYyZzBoundingBox[2]);
-            XxYyZzBoundingBox[3] = std::min(position.y, XxYyZzBoundingBox[3]);
-            XxYyZzBoundingBox[4] = std::max(position.z, XxYyZzBoundingBox[4]);
-            XxYyZzBoundingBox[5] = std::min(position.z, XxYyZzBoundingBox[5]);
+            const glm::vec4& position = vertices[v].position;
+
+            XYZ.x = std::max(position.x, XYZ.x);
+            XYZ.y = std::max(position.y, XYZ.y);
+            XYZ.z = std::max(position.z, XYZ.z);
+
+            xyz.x = std::min(position.x, xyz.x);
+            xyz.y = std::min(position.y, xyz.y);
+            xyz.z = std::min(position.z, xyz.z);
         }
 
 
-        return std::pair(std::move(vertices), std::move(XxYyZzBoundingBox));
+        return std::pair(std::move(vertices), std::array<glm::vec3, 2>{xyz, XYZ});
     }
 
     auto Scene_t::fetchIndices(const tinygltf::Primitive& primitive)
@@ -454,15 +450,20 @@ namespace vlb {
 
             for (const auto& gltfPrimitive: gltfMesh.primitives)
             {
-                auto [vertices, XxYyZzBoundingBox] = fetchVertices(gltfPrimitive);
+                auto [vertices, nodeBounds] = fetchVertices(gltfPrimitive);
                 auto indices  = fetchIndices(gltfPrimitive);
 
-                this->XxYyZz[0] = std::max(this->XxYyZz[0], XxYyZzBoundingBox[0]);
-                this->XxYyZz[1] = std::min(this->XxYyZz[1], XxYyZzBoundingBox[1]);
-                this->XxYyZz[2] = std::max(this->XxYyZz[2], XxYyZzBoundingBox[2]);
-                this->XxYyZz[3] = std::min(this->XxYyZz[3], XxYyZzBoundingBox[3]);
-                this->XxYyZz[4] = std::max(this->XxYyZz[4], XxYyZzBoundingBox[4]);
-                this->XxYyZz[5] = std::min(this->XxYyZz[5], XxYyZzBoundingBox[5]);
+                std::array<glm::vec3, 2> globalNodeBounds{};
+                globalNodeBounds[0] = glm::vec3(node->matrix * glm::vec4(nodeBounds[0], 1.0f));
+                globalNodeBounds[1] = glm::vec3(node->matrix * glm::vec4(nodeBounds[1], 1.0f));
+
+                this->bounds[0].x = std::min(this->bounds[0].x, globalNodeBounds[0].x);
+                this->bounds[0].y = std::min(this->bounds[0].y, globalNodeBounds[0].y);
+                this->bounds[0].z = std::min(this->bounds[0].z, globalNodeBounds[0].z);
+
+                this->bounds[1].x = std::max(this->bounds[1].x, globalNodeBounds[1].x);
+                this->bounds[1].y = std::max(this->bounds[1].y, globalNodeBounds[1].y);
+                this->bounds[1].z = std::max(this->bounds[1].z, globalNodeBounds[1].z);
 
                 Primitive primitive{new Primitive_t()};
                 primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materialsCount - 1;
