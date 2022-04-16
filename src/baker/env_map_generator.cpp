@@ -21,6 +21,12 @@ namespace vlb {
         this->scene = scene;
     }
 
+    void EnvMapGenerator::setEnvShpereRadius(uint32_t radius)
+    {
+        constexpr float pi = 3.1415926538f;
+        this->envMapExtent = vk::Extent3D{static_cast<uint32_t>(pi * static_cast<float>(radius) * 2.f), radius * 2, 1};
+    }
+
     void EnvMapGenerator::passVulkanResources(VulkanResources& info)
     {
         this->device               = info.device;
@@ -105,23 +111,21 @@ namespace vlb {
         device.unmapMemory(staging.memory.get());
     }
 
-    Application::Image& EnvMapGenerator::createImage(vk::Format imageFormat, vk::Extent3D imageExtent)
+    Application::Image& EnvMapGenerator::createImage()
     {
-        this->envMapFormat = imageFormat;
-        this->envMapExtent = imageExtent;
-        this->envMap = Application::createImage(this->device, this->physicalDevice, imageFormat, imageExtent,
+        assert(imageExtent);
+        this->envMap = Application::createImage(this->device, this->physicalDevice, this->envMapFormat, envMapExtent,
                 this->commandPool.transfer, this->queue.transfer);
         updateImageDescriptorSet();
         return this->envMap;
     }
 
-    Application::Image& EnvMapGenerator::createImage(vk::Format imageFormat, const char* filename)
+    Application::Image& EnvMapGenerator::createImage(const char* filename)
     {
         unsigned char* texels = nullptr;
         loadDebugMapFromPNG(filename, &texels);
 
-        this->envMapFormat = imageFormat;
-        this->envMap = Application::createImage(this->device, this->physicalDevice, imageFormat, this->envMapExtent,
+        this->envMap = Application::createImage(this->device, this->physicalDevice, this->envMapFormat, this->envMapExtent,
                 this->commandPool.transfer, this->queue.transfer);
 
         using enum vk::BufferUsageFlagBits;

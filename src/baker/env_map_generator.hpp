@@ -36,7 +36,7 @@ namespace vlb {
 
             Scene               scene;
             Application::Image  envMap;
-            vk::Format          envMapFormat;
+            vk::Format          envMapFormat = vk::Format::eR8G8B8A8Unorm;
             vk::Extent3D        envMapExtent;
 
             vk::UniqueDescriptorPool      descriptorPool;
@@ -56,12 +56,13 @@ namespace vlb {
             ~EnvMapGenerator();
 
             void                setScene(Scene&& scene);
+            void                setEnvShpereRadius(uint32_t radius);
             void                passVulkanResources(VulkanResources& info);
             void                setupVukanRaytracing();
             void                getMap(glm::vec3 position);
             void                loadDebugMapFromPNG(const char* filename, unsigned char** texels);
-            Application::Image& createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
-            Application::Image& createImage(vk::Format imageFormat, const char* filename);
+            Application::Image& createImage();
+            Application::Image& createImage(const char* filename);
             Application::Image& getImage();
             vk::Extent3D        getImageExtent();
             void                saveImage(const std::string& imageName);

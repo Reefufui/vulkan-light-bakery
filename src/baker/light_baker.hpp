@@ -38,7 +38,7 @@ namespace vlb {
             LightBaker(std::string& sceneName);
             ~LightBaker();
 
-            std::vector<glm::vec3> probePositionsFromBoudingBox(std::array<glm::vec3, 8> boundingBox);
+            std::vector<glm::vec3> probePositionsFromBoudingBox(std::array<glm::vec3, 2> boundingBox);
             void createBakingPipeline();
             void modifyPipelineForDebug();
             void dispatchBakingKernel();
