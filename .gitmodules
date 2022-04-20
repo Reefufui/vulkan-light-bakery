@@ -1,0 +1,3 @@
+[submodule "src/vendor/tqdm"]
+	path = src/vendor/tqdm
+	url = git@github.com:aminnj/cpptqdm.git

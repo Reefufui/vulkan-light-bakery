@@ -1,8 +1,11 @@
 // created in 2022 by Andrey Treefonov https://github.com/Reefufui
 
 #include "light_baker.hpp"
+#include "tqdm/tqdm.h"
 
+#include <fstream>
 #include <glm/gtx/string_cast.hpp> // Debug
+#include <nlohmann/json.hpp>
 
 namespace vlb {
 
@@ -10,6 +13,8 @@ namespace vlb {
     {
         if (assetName.find(".gltf") != std::string::npos || assetName.find(".glb") != std::string::npos)
         {
+            this->gltfFileName = assetName;
+
             auto res = Scene_t::VulkanResources
             {
                 this->physicalDevice,
@@ -31,7 +36,10 @@ namespace vlb {
                     this->queue.graphics,
                     this->commandPool.graphics.get(),
             };
+
             this->envMapGenerator.passVulkanResources(res2);
+
+            this->probesCount3D = glm::vec3(5, 5, 5); // TODO set this somewhere else
 
             {
                 SceneManager sceneManager{};
@@ -39,16 +47,15 @@ namespace vlb {
                 sceneManager.pushScene(assetName);
                 sceneManager.setSceneIndex(0);
                 auto scene = sceneManager.getScene();
-                this->envMapGenerator.setScene(std::move(scene));
+                std::cout << "here\n";
                 this->probePositions = probePositionsFromBoudingBox(scene->getBounds());
+                this->envMapGenerator.setScene(std::move(scene));
             }
 
             this->envMapGenerator.setupVukanRaytracing();
 
             this->envMapGenerator.setEnvShpereRadius(100u);
             this->envMapGenerator.createImage();
-
-            this->probesCount3D = glm::vec3(5, 5, 5);
         }
         else
         {
@@ -272,19 +279,31 @@ namespace vlb {
     {
         createBakingPipeline();
 
-        int counter = 0;
-        for (glm::vec3 pos : this->probePositions)
+        nlohmann::json json{};
+        std::ifstream i(this->gltfFileName);
+        //std::ofstream o(this->gltfFileName);
+
+
+        tqdm bar;
+        bar.set_theme_circle();
+
+        for (int i = 0; i < this->probePositions.size(); ++i)
         {
-            std::cout << glm::to_string(pos) << "\n";
+            auto& pos = this->probePositions[i];
+
             this->envMapGenerator.getMap(pos);
             dispatchBakingKernel();
             void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 16 * 3 * sizeof(float));
             float* coeffs = static_cast<float*>(dataPtr);
             device.get().unmapMemory(SHCoeffs.memory.get());
 
-            std::string name = std::to_string(counter++) + ".png";
-            this->envMapGenerator.saveImage(name);
+            std::string name = std::to_string(i) + ".png";
+            //this->envMapGenerator.saveImage(name);
+
+            bar.progress(i, this->probePositions.size());
         }
+
+        bar.finish();
     }
 }
 

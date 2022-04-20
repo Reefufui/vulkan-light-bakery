@@ -19,7 +19,7 @@ set(CONAN_SYSTEM_INCLUDES ON)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(NO_OUTPUT_DIRS)
 
-include_directories(src src/vendor src/baker shaders)
+include_directories(src src/vendor src/vendor/tqdm/include src/baker shaders)
 
 add_library(core SHARED
     src/application.cpp
@@ -78,6 +78,7 @@ if (KERNEL_COMPILER)
         "shaders/*.rchit"
         "shaders/*.rmiss"
         "shaders/*.rahit"
+        "shaders/*.rcall"
         "shaders/*.comp"
         )
     foreach(GLSL ${GLSL_SOURCE_FILES})

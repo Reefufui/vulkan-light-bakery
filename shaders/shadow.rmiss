@@ -1,10 +1,10 @@
 #version 460
 #extension GL_EXT_ray_tracing : enable
 
-layout(location = 0) rayPayloadInEXT bool payLoad;
+layout(location = 0) rayPayloadInEXT bool inShadow;
 
 void main()
 {
-    payLoad = false;
+    inShadow = false;
 }
 
