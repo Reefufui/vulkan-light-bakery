@@ -10,16 +10,9 @@
 
 #include "structures.h"
 
-// TODO: move to common file
-struct SHPayload
-{
-    vec3 a;
-};
-
 hitAttributeEXT vec3 attribs;
 layout(location = 0) rayPayloadInEXT vec3 color;
 layout(location = 1) rayPayloadEXT   bool inShadow;
-layout(location = 2) rayPayloadEXT   SHPayload dummy; // TODO
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1, scalar) buffer Instances { InstanceInfo i[]; } instanceInfo;
@@ -79,49 +72,30 @@ void main()
 
     const vec3 shadowRay = lightPos - hitPosition;
 
-    const float ambient = 0.01f;
+    const float ambient = 0.00f;
     float diffuse = 0.0f;
     float specular = 0.0f;
 
     const float sDotN = max(dot(normalize(shadowRay), hitNormal), 0.0f);
 
+    const float shadowBias = 0.005f;
+    const vec3  origin = hitPosition + shadowBias * hitNormal;
     inShadow = true;
     if (sDotN != 0.0f)
     {
         uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-        traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 1, hitPosition, 0.001f, normalize(shadowRay), length(shadowRay), 1);
+        traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 1, origin, 0.0f, normalize(shadowRay), length(shadowRay), 1);
     }
 
     if (!inShadow)
     {
-        const float Cdiffuse  = 0.4f;
+        const float Cdiffuse  = 0.5f;
         diffuse   = Cdiffuse * sDotN;
 
-        const float Cspecular = 0.4f;
-        const float glossyness = 15.0f;
-        const vec3  reflected = reflect(normalize(shadowRay), hitNormal);
-        specular  = Cspecular * pow(max(dot(reflected, gl_WorldRayDirectionEXT), 0.0f), glossyness);
-    }
-
-    vec3 gridStep = vec3(0.04f, 0.02f, 0.03f); // TODO
-    vec3 ijk = floor(hitPosition / gridStep);
-    //
-    const vec3 gridVertices[8] = vec3[](
-            vec3(0.0f, 0.0f, 0.0f),
-            vec3(0.0f, 0.0f, 1.0f),
-            vec3(0.0f, 1.0f, 0.0f),
-            vec3(0.0f, 1.0f, 1.0f),
-            vec3(1.0f, 0.0f, 0.0f),
-            vec3(1.0f, 0.0f, 1.0f),
-            vec3(1.0f, 1.0f, 0.0f),
-            vec3(1.0f, 1.0f, 1.0f)
-            );
-
-    for (int i = 0; i < 9; ++i)
-    {
-        vec3 dir = gridStep * (ijk + gridVertices[i]) - hitPosition;
-        uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-        //traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 2, hitPosition, 0.001f, normalize(dir), length(dir), 2);
+        const float Cspecular  = 0.5f;
+        const float glossyness = 16.0f;
+        const vec3  reflected  = reflect(normalize(shadowRay), hitNormal);
+        specular               = Cspecular * pow(max(dot(reflected, gl_WorldRayDirectionEXT), 0.0f), glossyness);
     }
 
     color = sRGB(baseColor * (ambient + diffuse + specular)).rgb;

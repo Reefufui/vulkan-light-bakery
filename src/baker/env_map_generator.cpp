@@ -254,7 +254,7 @@ namespace vlb {
             .setPName("main");
         shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eRaygen));
 
-        shaderModules.push_back(Application::createShaderModule(this->device, "shaders/basic.rmiss.spv"));
+        shaderModules.push_back(Application::createShaderModule(this->device, "shaders/main.rmiss.spv"));
         shaderStages[StageIndices::eMiss] = vk::PipelineShaderStageCreateInfo{};
         shaderStages[StageIndices::eMiss]
             .setStage(vk::ShaderStageFlagBits::eMissKHR)
@@ -270,7 +270,7 @@ namespace vlb {
             .setPName("main");
         shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eShadow));
 
-        shaderModules.push_back(Application::createShaderModule(this->device, "shaders/basic.rchit.spv"));
+        shaderModules.push_back(Application::createShaderModule(this->device, "shaders/env_map.rchit.spv"));
         shaderStages[StageIndices::eClosestHit] = vk::PipelineShaderStageCreateInfo{};
         shaderStages[StageIndices::eClosestHit]
             .setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
@@ -321,7 +321,7 @@ namespace vlb {
         createRayTracingPipeline();
         this->scene->updateSceneDescriptorSets(this->sceneDS.get());
 
-        this->sbt = Application::createShaderBindingTable(this->device, this->physicalDevice, this->pipeline.get());
+        this->sbt = Application::createShaderBindingTable(this->device, this->physicalDevice, this->pipeline.get(), 2u, 1u);
     }
 
     void EnvMapGenerator::getMap(glm::vec3 position)

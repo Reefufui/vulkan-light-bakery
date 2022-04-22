@@ -16,5 +16,5 @@ void main()
 {
     vec3 color = vec3(0.3f) + vec3(mix(0.0f, 1.0f, gl_WorldRayDirectionEXT.y), 0.0f, 0.0f);
     payLoad = sRGB(vec4(color, 1.0f)).rgb;
-    payLoad = vec3(0.0f);
+    payLoad *= vec3(0.1f);
 }

@@ -41,12 +41,25 @@ namespace vlb {
             vlb::SceneManager* pSceneManager;
             void sceneManager();
             void camera();
-
-            float lightIntensity = 1.0f;
+            void tweakLighting();
 
         public:
+            struct InteractiveLighting
+            {
+                glm::vec3 lightPosition = glm::vec3(1.0f, 10.0f, 1.0f);
+                float shadowBias = 0.005f;
+                float ambientLight = 0.01f;
+                float Cdiffuse = 0.5f;
+                float Cspecular = 0.5f;
+                float Cglossyness = 16.0f;
+            };
+            InteractiveLighting& getLighing();
 
-            float& getLightIntensity();
+        private:
+
+            InteractiveLighting lighting;
+
+        public:
 
             struct InterfaceInitInfo
             {

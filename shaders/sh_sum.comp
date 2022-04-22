@@ -27,7 +27,6 @@ void main()
     const ivec2 xy    = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     const vec3  dir   = toVector(x2phi(xy.x, constants.width), y2theta(xy.y, constants.height));
     vec3        color = vec3(0.f);
-    const float normConst = calcNormalizationConst(constants.height, constants.width);
 
     for (int l = 0; l < 4; l++)
     {

@@ -97,7 +97,7 @@ namespace vlb {
             Buffer                 createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags memoryProperty, const void* data = nullptr);
             Image                  createImage(vk::Format imageFormat, vk::Extent3D imageExtent);
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
-            ShaderBindingTable     createShaderBindingTable(vk::Pipeline& pipeline);
+            ShaderBindingTable     createShaderBindingTable(vk::Pipeline& pipeline, unsigned missCount, unsigned hitCount);
 
         private:
 
@@ -150,7 +150,9 @@ namespace vlb {
             static ShaderBindingTable createShaderBindingTable(
                     vk::Device& device,
                     vk::PhysicalDevice& physicalDevice,
-                    vk::Pipeline& pipeline);
+                    vk::Pipeline& pipeline,
+                    unsigned missCount,
+                    unsigned hitCount);
 
             Application(bool isGraphical = true);
             Application(const Application& other) = delete;

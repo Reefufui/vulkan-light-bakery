@@ -291,11 +291,6 @@ namespace vlb {
         deserialize();
     }
 
-    float& UI::getLightIntensity()
-    {
-        return this->lightIntensity;
-    }
-
     void UI::camera()
     {
         ImGui::Text("Camera Settings");
@@ -375,13 +370,32 @@ namespace vlb {
         }
     }
 
+    UI::InteractiveLighting& UI::getLighing()
+    {
+        return this->lighting;
+    }
+
+    void UI::tweakLighting()
+    {
+        ImGui::Text("Tweak Lighting");
+
+        ImGui::Text("Light position");
+        ImGui::SliderFloat("x:", &this->lighting.lightPosition.x, -20.0f, 20.0f);
+        ImGui::SliderFloat("y:", &this->lighting.lightPosition.y, -20.0f, 20.0f);
+        ImGui::SliderFloat("z:", &this->lighting.lightPosition.z, -20.0f, 20.0f);
+
+        ImGui::SliderFloat("Shadow Bias", &this->lighting.shadowBias, 0.0f, 0.01f);
+        ImGui::SliderFloat("Ambience", &this->lighting.ambientLight, 0.0f, 0.2f);
+        ImGui::SliderFloat("Diffuse", &this->lighting.Cdiffuse, 0.0f, 1.0f);
+        ImGui::SliderFloat("Specular", &this->lighting.Cspecular, 0.0f, 1.0f);
+        ImGui::SliderFloat("Glossyness", &this->lighting.Cglossyness, 2.0f, 200.0f);
+    }
+
     void UI::update()
     {
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
-        bool openpopuptemp = false;
 
         ImGui::Begin("Vulkan Light Bakery");
         {
@@ -396,9 +410,9 @@ namespace vlb {
                 camera();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Light"))
+            if (ImGui::BeginTabItem("Lighting"))
             {
-                ImGui::SliderFloat("Light intensity", &(this->lightIntensity), 0.0f, 1.3f);
+                tweakLighting();
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
@@ -439,7 +453,6 @@ namespace vlb {
             nlohmann::json json{};
             file >> json;
 
-            this->lightIntensity = json["lightIntensity"].get<float>();
             this->pSceneManager->setSceneIndex(json["selectedSceneIndex"].get<int>());
             this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
 
@@ -485,7 +498,6 @@ namespace vlb {
         std::ofstream file("vklb.json");
 
         nlohmann::json json{};
-        json["lightIntensity"] = this->lightIntensity;
         json["selectedSceneIndex"] = this->pSceneManager->getSceneIndex();
         json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
 

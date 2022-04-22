@@ -574,12 +574,12 @@ namespace vlb {
 #endif
     }
 
-    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Pipeline& pipeline)
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Pipeline& pipeline, unsigned missCount, unsigned hitCount)
     {
-        return createShaderBindingTable(this->device.get(), this->physicalDevice, pipeline);
+        return createShaderBindingTable(this->device.get(), this->physicalDevice, pipeline, missCount, hitCount);
     }
 
-    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& pipeline)
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& pipeline, unsigned missCount, unsigned hitCount)
     {
         Application::ShaderBindingTable sbt{};
 
@@ -592,7 +592,7 @@ namespace vlb {
             return (value + alignment - 1) & ~(alignment - 1);
         };
 
-        const uint32_t groupCount = 1u + 2u + 1u; // raygen + miss + shadow + chit
+        const uint32_t groupCount = 1u + missCount + hitCount; // raygen + miss + shadow + chit
         const uint32_t dataSize   = groupCount * RTPipelineProperties.shaderGroupHandleSize;
         std::vector<uint8_t> handles(dataSize);
         device.getRayTracingShaderGroupHandlesKHR(pipeline, 0, groupCount, dataSize, handles.data());
@@ -610,24 +610,24 @@ namespace vlb {
             | vk::BufferUsageFlagBits::eShaderDeviceAddress;
         const vk::MemoryPropertyFlags mem = vk::MemoryPropertyFlagBits::eHostVisible
             | vk::MemoryPropertyFlagBits::eHostCoherent;
-        const vk::DeviceSize          size = baseAlignment(groupSize) + baseAlignment(2 * groupSize) + baseAlignment(groupSize);
+        const vk::DeviceSize          size = baseAlignment(groupSize) + baseAlignment(missCount * groupSize) + baseAlignment(hitCount * groupSize);
 
         sbt.buffer = createBuffer(device, physicalDevice, size, usg, mem);
 
-        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // raygen
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{}
                 .setDeviceAddress(sbt.buffer.deviceAddress)
                 .setStride(baseAlignment(groupSize))
                 .setSize(baseAlignment(groupSize))
                 );
-        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // miss + shadow miss --> groupSize * 2
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{}
                 .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(groupSize))
                 .setStride(groupSize)
-                .setSize(baseAlignment(2 * groupSize))
+                .setSize(baseAlignment(missCount * groupSize))
                 );
         sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // hit
-                .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(3 * groupSize))
+                .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(groupSize) + baseAlignment(missCount * groupSize))
                 .setStride(groupSize)
-                .setSize(baseAlignment(groupSize))
+                .setSize(baseAlignment(hitCount * groupSize))
                 );
 
         uint8_t* dataPtr = reinterpret_cast<uint8_t*>(device.mapMemory(sbt.buffer.memory.get(), 0, groupCount * groupSize));
@@ -635,17 +635,28 @@ namespace vlb {
             const uint32_t handleSize = RTPipelineProperties.shaderGroupHandleSize;
             uint8_t* ptr{nullptr};
 
+            int index = 0;
+            auto getHandle = [&]()
+            {
+                return handles.data() + (index++) * handleSize;
+            };
+
             ptr = dataPtr;
-            memcpy(ptr, handles.data() + 0 * handleSize, handleSize); // raygen
+            memcpy(ptr, getHandle(), handleSize);
 
             ptr = dataPtr + sbt.strides[0].size;
-            memcpy(ptr, handles.data() + 1 * handleSize, handleSize); // miss
-
-            ptr = dataPtr + sbt.strides[0].size + sbt.strides[1].stride;
-            memcpy(ptr, handles.data() + 2 * handleSize, handleSize); // shadow
+            for (unsigned i{}; i < missCount; ++i)
+            {
+                memcpy(ptr, getHandle(), handleSize);
+                ptr += sbt.strides[1].stride;
+            }
 
             ptr = dataPtr + sbt.strides[0].size + sbt.strides[1].size;
-            memcpy(ptr, handles.data() + 3 * handleSize, handleSize); // chit
+            for (unsigned i{}; i < hitCount; ++i)
+            {
+                memcpy(ptr, getHandle(), handleSize);
+                ptr += sbt.strides[2].stride;
+            }
         }
         device.unmapMemory(sbt.buffer.memory.get());
 
