@@ -8,7 +8,7 @@ float calcNormalizationConst(const float h, const float w)
 vec3 toVector(const float phi, const float theta)
 {
     float r = sin(theta);
-    return vec3(r * cos(phi), r * sin(phi), cos(theta));
+    return normalize(vec3(r * cos(phi), r * sin(phi), cos(theta)));
 }
 
 float x2phi(const int x, const int w)
@@ -18,8 +18,7 @@ float x2phi(const int x, const int w)
 
 float y2theta(const int y, const int h)
 {
-    //return PI * (float(y) + 0.5f) / float(h);
-    return 2 * acos(sqrt(1.0f - (float(y) + 0.5f) / float(h)));
+    return PI * (float(y) + 0.5f) / float(h);
 }
 
 // took from https://github.com/google/spherical-harmonics/blob/master/sh/spherical_harmonics.cc

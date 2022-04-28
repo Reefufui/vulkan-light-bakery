@@ -10,30 +10,29 @@
 
 struct SHPayload
 {
-    ivec3  ijk;
     vec3  sum;
+    uint  lmax;
+    ivec3 ijk;
+    bool  occluded;
 };
 
 layout(location = 0) rayPayloadInEXT SHPayload pl;
-//layout(set = 0, binding = 4, scalar) buffer SHCoeffs { vec3 sh[]; } shCoeffs;
-
-int lmax = 16;
-int shCount = 16;
+layout(set = 0, binding = 4, scalar) buffer SHCoeffs { vec3 sh[]; } shCoeffs;
 
 void main()
 {
     ivec3 probesCount = ivec3(5);
 
-    int shOffset = shCount * (pl.ijk.x + pl.ijk.y * probesCount.x + pl.ijk.z * probesCount.x * probesCount.y);
+    uint shCount  = (pl.lmax + 1u) * (pl.lmax + 1u);
+    uint shOffset = shCount * (pl.ijk.x + pl.ijk.y * probesCount.x + pl.ijk.z * probesCount.x * probesCount.y);
 
-    vec3 color = vec3(0.f);
-
-    for (int l = 0; l < lmax; l++)
+    for (int l = 0; l < pl.lmax; l++)
     {
         for (int m = -l; m < l + 1; m++)
         {
-            //pl.sum += shCoeffs.sh[shOffset +  l * (l + 1) + m] * SH(l, m, gl_WorldRayDirectionEXT);
+            pl.sum += 250.0f * shCoeffs.sh[shOffset +  l * (l + 1) + m] * SH(l, m, gl_WorldRayDirectionEXT);
         }
     }
 
+    pl.occluded = false;
 }

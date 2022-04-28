@@ -7,13 +7,25 @@
 #include <glm/ext/matrix_double4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
 #include <glm/gtx/string_cast.hpp> // Debug
+#include <nlohmann/json.hpp>
 
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 #include <algorithm>
 #include <utility>
 #include <array>
 #include <limits>
+
+namespace glm
+{
+    void from_json(const nlohmann::json& j, vec3& vec)
+    {
+        j.at("x").get_to(vec.x);
+        j.at("y").get_to(vec.y);
+        j.at("z").get_to(vec.z);
+    }
+}
 
 namespace vlb {
 
@@ -91,7 +103,12 @@ namespace vlb {
             .setBinding(3)
                 .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
                 .setDescriptorCount(this->textures.size() ? this->textures.size() : 1)
-                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR)
+                .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(4)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eMissKHR),
         };
 
         this->descriptorSetLayout = this->device.createDescriptorSetLayoutUnique(
@@ -105,6 +122,16 @@ namespace vlb {
     vk::DescriptorSetLayout Scene_t::getDescriptorSetLayout()
     {
         return this->descriptorSetLayout.get();
+    }
+
+    glm::vec3 Scene_t::getGridStep()
+    {
+        return this->bakedLight.gridStep;
+    }
+
+    unsigned Scene_t::getLmax()
+    {
+        return this->bakedLight.lmax;
     }
 
     Scene Scene_t::updateSceneDescriptorSets(vk::DescriptorSet targetDS)
@@ -158,6 +185,23 @@ namespace vlb {
             .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
             .setImageInfo(texturesDescriptorInfo);
 
+        if (this->bakedLight.lmax)
+        {
+            vk::DescriptorBufferInfo shDescriptorInfo{};
+            shDescriptorInfo
+                .setBuffer(this->bakedLight.coeffs.handle.get())
+                .setRange(VK_WHOLE_SIZE);
+
+            vk::WriteDescriptorSet shWriteDS{};
+            shWriteDS
+                .setDstSet(targetDS)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDstBinding(4)
+                .setBufferInfo(shDescriptorInfo);
+
+            this->device.updateDescriptorSets(shWriteDS, nullptr);
+        }
+
         this->device.updateDescriptorSets(tlasWriteDS, nullptr);
         this->device.updateDescriptorSets(objDescWriteDS, nullptr);
         this->device.updateDescriptorSets(materialsWriteDS, nullptr);
@@ -168,7 +212,6 @@ namespace vlb {
 
         return shared_from_this();
     }
-
 
     std::array<glm::vec3, 2> Scene_t::getBounds()
     {
@@ -512,6 +555,97 @@ namespace vlb {
         return shared_from_this();
     }
 
+    static inline bool is_base64(uint8_t c)
+    {
+        return (isalnum(c) || (c == '+') || (c == '/'));
+    }
+
+    std::string base64_decode(std::string const &encoded_string)
+    {
+        int in_len = static_cast<int>(encoded_string.size());
+        int i = 0;
+        int j = 0;
+        int in_ = 0;
+        uint8_t char_array_4[4], char_array_3[3];
+        std::string ret;
+
+        const std::string base64_chars =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz"
+            "0123456789+/";
+
+        while (in_len-- && (encoded_string[in_] != '=') &&
+                is_base64(encoded_string[in_])) {
+            char_array_4[i++] = encoded_string[in_];
+            in_++;
+            if (i == 4) {
+                for (i = 0; i < 4; i++)
+                    char_array_4[i] =
+                        static_cast<uint8_t>(base64_chars.find(char_array_4[i]));
+
+                char_array_3[0] =
+                    (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+                char_array_3[1] =
+                    ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+                char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+                for (i = 0; (i < 3); i++) ret += char_array_3[i];
+                i = 0;
+            }
+        }
+
+        if (i) {
+            for (j = i; j < 4; j++) char_array_4[j] = 0;
+
+            for (j = 0; j < 4; j++)
+                char_array_4[j] =
+                    static_cast<uint8_t>(base64_chars.find(char_array_4[j]));
+
+            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+            char_array_3[1] =
+                ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+            for (j = 0; (j < i - 1); j++) ret += char_array_3[j];
+        }
+
+        return ret;
+    }
+
+    Scene Scene_t::loadBakedLight()
+    {
+        std::ifstream i(this->path);
+        nlohmann::json json{};
+        i >> json;
+        auto light = json["light"];
+
+        if (!light.empty())
+        {
+            this->bakedLight.gridStep = light["gridStep"].get<glm::vec3>();
+            this->bakedLight.lmax     = light["lmax"].get<int>();
+
+            auto bufferView = json["bufferViews"][light["bufferView"].get<int>()];
+            auto buffer     = json["buffers"]    [bufferView["buffer"].get<int>()];
+
+            std::string uri  = buffer["uri"].get<std::string>();
+            std::string header = "data:application/octet-stream;base64,";
+            uri.replace(0, header.length(), "");
+
+            char*  ptr = const_cast<char*>(base64_decode(uri).c_str());
+            size_t size = buffer["byteLength"].get<int>();
+            std::vector<uint8_t> coeffs(size);
+            memcpy(coeffs.data(), ptr, size);
+
+            this->bakedLight.coeffs = toBuffer(std::move(coeffs));
+        }
+        else
+        {
+            this->bakedLight.gridStep = glm::vec3(0.0f);
+            this->bakedLight.lmax     = 0u;
+        }
+
+        return shared_from_this();
+    }
 
     Scene Scene_t::loadSamplers()
     {
@@ -944,6 +1078,7 @@ namespace vlb {
         scene->loadTextures();
         scene->loadMaterials();
         scene->loadNodes();
+        scene->loadBakedLight();
         scene->buildAccelerationStructures();
         scene->createDescriptorSetLayout();
 
@@ -984,6 +1119,7 @@ namespace vlb {
         scene->buildAccelerationStructures();
         scene->createDescriptorSetLayout();
         scene->loadCameras();
+        scene->loadBakedLight();
         scene->setCameraIndex(0);
         scene->setViewingFrustumForCameras(this->frustum);
 

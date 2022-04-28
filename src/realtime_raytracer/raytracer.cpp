@@ -159,7 +159,10 @@ namespace vlb {
                     | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind)
                 );
 
-        auto sceneLayout = this->sceneManager.getScene()->getDescriptorSetLayout();
+        auto& scene = this->sceneManager.getScene();
+        this->constants.gridStep = scene->getGridStep();
+        this->constants.lmax     = scene->getLmax();
+        auto sceneLayout = scene->getDescriptorSetLayout();
         this->descriptorSet.scene = std::move(this->device.get().allocateDescriptorSetsUnique(
                     vk::DescriptorSetAllocateInfo{}
                     .setDescriptorPool(this->descriptorPool.get())

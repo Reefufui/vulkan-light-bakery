@@ -22,7 +22,7 @@ layout(set = 0, binding = 3) uniform sampler2D textures[];
 layout(buffer_reference, scalar) buffer Vertices  { Vertex v[]; };
 layout(buffer_reference, scalar) buffer Indices   { ivec3  i[]; };
 
-vec3 lightPos = vec3(5.0f, 5.0f, 5.0f);
+vec3 lightPos = vec3(1.0f, 10.0f, 1.0);
 
 vec4 sRGB(vec4 RGB)
 {

@@ -38,6 +38,7 @@ namespace vlb {
             struct Constants
             {
                 glm::vec3               gridStep;
+                unsigned                lmax;
                 UI::InteractiveLighting lighting;
             } constants;
 

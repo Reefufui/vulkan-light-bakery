@@ -13,14 +13,16 @@
 // TODO: move to common file
 struct SHPayload
 {
-    ivec3  ijk;
+    ivec3 ijk;
+    uint  lmax;
     vec3  sum;
+    bool  occluded;
 };
 
 hitAttributeEXT vec3 attribs;
 layout(location = 0) rayPayloadInEXT vec3 color;
 layout(location = 1) rayPayloadEXT   bool inShadow;
-layout(location = 2) rayPayloadEXT   SHPayload dummy; // TODO
+layout(location = 2) rayPayloadEXT   SHPayload shPayload;
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1, scalar) buffer Instances { InstanceInfo i[]; } instanceInfo;
@@ -33,6 +35,7 @@ layout(buffer_reference, scalar) buffer Indices   { ivec3  i[]; };
 layout(push_constant, scalar) uniform PushConstants
 {
     vec3  gridStep;
+    uint  lmax;
     vec3  lightPosition;
     float shadowBias;
     float ambient;
@@ -41,11 +44,11 @@ layout(push_constant, scalar) uniform PushConstants
     float Cglossyness;
 } constants;
 
-vec4 sRGB(vec4 RGB)
+vec3 sRGB(vec3 RGB)
 {
-    bvec4 cutoff = lessThan(RGB, vec4(0.0031308));
-    vec4 higher = vec4(1.055)*pow(RGB, vec4(1.0/2.4)) - vec4(0.055);
-    vec4 lower = RGB * vec4(12.92);
+    bvec3 cutoff = lessThan(RGB, vec3(0.0031308));
+    vec3 higher = vec3(1.055)*pow(RGB, vec3(1.0/2.4)) - vec3(0.055);
+    vec3 lower = RGB * vec3(12.92);
 
     return mix(higher, lower, cutoff);
 }
@@ -110,26 +113,53 @@ void main()
         specular               = constants.Cspecular * pow(max(dot(reflected, gl_WorldRayDirectionEXT), 0.0f), constants.Cglossyness);
     }
 
-    vec3 ijk = floor(hitPosition / constants.gridStep);
-
-    const vec3 gridVertices[8] = vec3[](
-            vec3(0.0f, 0.0f, 0.0f),
-            vec3(0.0f, 0.0f, 1.0f),
-            vec3(0.0f, 1.0f, 0.0f),
-            vec3(0.0f, 1.0f, 1.0f),
-            vec3(1.0f, 0.0f, 0.0f),
-            vec3(1.0f, 0.0f, 1.0f),
-            vec3(1.0f, 1.0f, 0.0f),
-            vec3(1.0f, 1.0f, 1.0f)
-            );
-
-    for (int i = 0; i < 9; ++i)
+    /*
+    if (constants.gridStep != vec3(0.0f))
     {
-        vec3 dir = constants.gridStep * (ijk + gridVertices[i]) - hitPosition;
-        uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-        traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 2, origin, 0.0f, normalize(dir), length(dir), 2);
-    }
+        vec3 ijk = floor(hitPosition / constants.gridStep);
 
-    color = sRGB(baseColor * (constants.ambient + diffuse + specular)).rgb;
+        const vec3 gridVertices[8] = vec3[](
+                vec3(0.0f, 0.0f, 0.0f),
+                vec3(0.0f, 0.0f, 1.0f),
+                vec3(0.0f, 1.0f, 0.0f),
+                vec3(0.0f, 1.0f, 1.0f),
+                vec3(1.0f, 0.0f, 0.0f),
+                vec3(1.0f, 0.0f, 1.0f),
+                vec3(1.0f, 1.0f, 0.0f),
+                vec3(1.0f, 1.0f, 1.0f)
+                );
+
+        vec3  shSum = vec3(0.0f);
+        float weightSum = 0.0f;
+        float weightMax = length(constants.gridStep);
+
+        for (int i = 0; i < 9; ++i)
+        {
+            vec3 dir = constants.gridStep * (ijk + gridVertices[i]) - hitPosition;
+            uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
+
+            shPayload.ijk       = ivec3(ijk);
+            shPayload.lmax      = constants.lmax;
+            shPayload.sum       = vec3(0.0f);
+            shPayload.occluded  = true;
+
+            float tmax = length(dir);
+            traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 2, origin, 0.0f, normalize(dir), tmax, 2);
+            float weight = weightMax - tmax;
+
+            if (!shPayload.occluded)
+            {
+                //shSum     += weight * shPayload.sum;
+                shSum     += shPayload.sum;
+                weightSum += weight;
+            }
+        }
+
+        shSum = shSum / weightSum;
+
+        color = sRGB(baseColor.rgb * (shSum + vec3(diffuse + specular))).rgb;
+    }
+    */
+    color = sRGB(baseColor.rgb * (constants.ambient + vec3(diffuse + specular))).rgb;
 }
 

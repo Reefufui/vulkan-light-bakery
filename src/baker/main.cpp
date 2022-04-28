@@ -21,9 +21,11 @@ int main(int argc, char** argv)
 
         vlb::LightBaker baker{sceneFileName};
         baker.bake();
+        //baker.serialize();
     }
     catch(const vk::SystemError& error)
     {
+        std::cerr << "std::exception: " << error.what() << "\n";
         return EXIT_FAILURE;
     }
     catch(std::exception& error)

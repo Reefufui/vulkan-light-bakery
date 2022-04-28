@@ -113,7 +113,6 @@ namespace vlb {
 
     Application::Image& EnvMapGenerator::createImage()
     {
-        assert(imageExtent);
         this->envMap = Application::createImage(this->device, this->physicalDevice, this->envMapFormat, envMapExtent,
                 this->commandPool.transfer, this->queue.transfer);
         updateImageDescriptorSet();
@@ -163,7 +162,6 @@ namespace vlb {
         Application::flushCommandBuffer(this->device, this->commandPool.transfer, cmd, this->queue.transfer);
 
         free(texels);
-        updateImageDescriptorSet();
 
         return this->envMap;
     }

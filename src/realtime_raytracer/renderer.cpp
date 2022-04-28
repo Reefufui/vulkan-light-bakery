@@ -216,7 +216,7 @@ namespace vlb {
 
     Renderer::Renderer()
     {
-        this->window    = createWindow(2500, 1500);
+        this->window    = createWindow(1000, 800);
         this->surface   = createSurface();
         this->swapchain = createSwapchain();
         createSwapchainResourses();

@@ -130,6 +130,7 @@ namespace vlb {
             Scene buildAccelerationStructures();
             Scene createDescriptorSetLayout();
             Scene loadCameras();
+            Scene loadBakedLight();
 
             std::array<glm::vec3, 2> getBounds();
 
@@ -145,6 +146,9 @@ namespace vlb {
             vk::DescriptorSetLayout getDescriptorSetLayout();
             Scene                   updateSceneDescriptorSets(vk::DescriptorSet targetDS);
 
+            // Lighting
+            glm::vec3 getGridStep();
+            unsigned  getLmax();
 
             // TODO MAKE PRIVATE
             AccelerationStructure tlas;
@@ -185,6 +189,13 @@ namespace vlb {
             std::array<glm::vec3, 2> bounds{};
 
             int cameraIndex;
+
+            struct BakedLight
+            {
+                glm::vec3           gridStep;
+                unsigned            lmax;
+                Application::Buffer coeffs;
+            } bakedLight;
 
             void loadNode(const Node parent, const tinygltf::Node& node, const uint32_t nodeIndex);
             glm::mat4 loadMatrix(const tinygltf::Node& gltfNode);
