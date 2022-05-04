@@ -11,8 +11,9 @@
 struct SHPayload
 {
     vec3  sum;
-    uint  lmax;
+    vec3  normal;
     ivec3 ijk;
+    uint  lmax;
     bool  occluded;
 };
 
@@ -21,7 +22,7 @@ layout(set = 0, binding = 4, scalar) buffer SHCoeffs { vec3 sh[]; } shCoeffs;
 
 void main()
 {
-    ivec3 probesCount = ivec3(5);
+    ivec3 probesCount = ivec3(7, 7, 7); // TODO
 
     uint shCount  = (pl.lmax + 1u) * (pl.lmax + 1u);
     uint shOffset = shCount * (pl.ijk.x + pl.ijk.y * probesCount.x + pl.ijk.z * probesCount.x * probesCount.y);
@@ -30,7 +31,7 @@ void main()
     {
         for (int m = -l; m < l + 1; m++)
         {
-            pl.sum += 250.0f * shCoeffs.sh[shOffset +  l * (l + 1) + m] * SH(l, m, gl_WorldRayDirectionEXT);
+            pl.sum += shCoeffs.sh[shOffset +  l * (l + 1) + m] * SH(l, m, pl.normal);
         }
     }
 

@@ -35,7 +35,7 @@ namespace vlb {
         {
             this->gltfFileName  = assetName;
             this->imageInput    = false;
-            this->probesCount3D = glm::vec3(5, 5, 5); // TODO set this somewhere else
+            this->probesCount3D = glm::vec3(7, 7, 7); // TODO set this somewhere else
 
             {
                 auto sceneManagerVulkanContext = Scene_t::VulkanResources
@@ -62,7 +62,7 @@ namespace vlb {
 
             this->envMapGenerator.setupVukanRaytracing();
 
-            this->envMapGenerator.setEnvShpereRadius(100u);
+            this->envMapGenerator.setEnvShpereRadius(500u);
             this->envMapGenerator.createImage();
         }
         else
@@ -299,21 +299,20 @@ namespace vlb {
         {
             auto& pos = this->probePositions[i];
 
-            if (!imageInput)
-            {
-                this->envMapGenerator.getMap(pos);
-            }
+            this->envMapGenerator.getMap(pos);
 
             dispatchBakingKernel();
 
-            std::string name = "input.png";
+            std::string name = std::to_string(i) + ".png";
             this->envMapGenerator.saveImage(name);
 
+            /*
             modifyPipelineForDebug();
             dispatchBakingKernel();
 
             name = "output.png";
             this->envMapGenerator.saveImage(name);
+            */
 
             void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, lmax * sizeof(glm::vec3));
             {

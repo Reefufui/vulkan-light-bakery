@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 
         vlb::LightBaker baker{sceneFileName};
         baker.bake();
-        //baker.serialize();
+        baker.serialize();
     }
     catch(const vk::SystemError& error)
     {

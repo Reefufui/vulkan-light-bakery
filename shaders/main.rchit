@@ -13,9 +13,10 @@
 // TODO: move to common file
 struct SHPayload
 {
+    vec3  sum;
+    vec3  normal;
     ivec3 ijk;
     uint  lmax;
-    vec3  sum;
     bool  occluded;
 };
 
@@ -113,7 +114,6 @@ void main()
         specular               = constants.Cspecular * pow(max(dot(reflected, gl_WorldRayDirectionEXT), 0.0f), constants.Cglossyness);
     }
 
-    /*
     if (constants.gridStep != vec3(0.0f))
     {
         vec3 ijk = floor(hitPosition / constants.gridStep);
@@ -131,35 +131,37 @@ void main()
 
         vec3  shSum = vec3(0.0f);
         float weightSum = 0.0f;
-        float weightMax = length(constants.gridStep);
+        const float weightMax = length(constants.gridStep);
 
-        for (int i = 0; i < 9; ++i)
+        for (int i = 0; i < 8; ++i)
         {
-            vec3 dir = constants.gridStep * (ijk + gridVertices[i]) - hitPosition;
-            uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
+            const vec3 dir = constants.gridStep * (ijk + gridVertices[i]) - hitPosition;
+            const uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
 
             shPayload.ijk       = ivec3(ijk);
             shPayload.lmax      = constants.lmax;
             shPayload.sum       = vec3(0.0f);
+            shPayload.normal    = hitNormal;
             shPayload.occluded  = true;
 
-            float tmax = length(dir);
+            const float tmax = length(dir);
             traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 2, origin, 0.0f, normalize(dir), tmax, 2);
-            float weight = weightMax - tmax;
+            const float weight = weightMax - tmax;
 
             if (!shPayload.occluded)
             {
-                //shSum     += weight * shPayload.sum;
-                shSum     += shPayload.sum;
+                shSum     += weight * shPayload.sum;
                 weightSum += weight;
             }
         }
 
         shSum = shSum / weightSum;
 
-        color = sRGB(baseColor.rgb * (shSum + vec3(diffuse + specular))).rgb;
+        color = sRGB(baseColor.rgb * (constants.ambient * 1250.0f * shSum + vec3(diffuse + specular))).rgb;
     }
-    */
-    color = sRGB(baseColor.rgb * (constants.ambient + vec3(diffuse + specular))).rgb;
+    else
+    {
+        color = sRGB(baseColor.rgb * (constants.ambient + vec3(diffuse + specular))).rgb;
+    }
 }
 
