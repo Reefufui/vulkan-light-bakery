@@ -21,25 +21,6 @@ namespace vlb {
     {
         private:
 
-            struct Sampler
-            {
-                vk::Filter magFilter = vk::Filter::eLinear;
-                vk::Filter minFilter = vk::Filter::eLinear;
-                vk::SamplerAddressMode addressModeU = vk::SamplerAddressMode::eRepeat;
-                vk::SamplerAddressMode addressModeV = vk::SamplerAddressMode::eRepeat;
-                vk::SamplerAddressMode addressModeW = vk::SamplerAddressMode::eRepeat;
-            };
-
-            struct Texture_t;
-            typedef std::shared_ptr<Texture_t> Texture;
-            struct Texture_t
-            {
-                Application::Image      image;
-                uint32_t                mipLevels;
-                vk::DescriptorImageInfo descriptor;
-                vk::UniqueSampler       sampler;
-            };
-
             struct AccelerationStructure_t;
             typedef std::shared_ptr<AccelerationStructure_t> AccelerationStructure;
             struct AccelerationStructure_t
@@ -155,7 +136,7 @@ namespace vlb {
             Application::Buffer   instanceInfoBuffer;
             Application::Buffer   materialBuffer;
             size_t materialsCount;
-            std::vector<Texture>  textures;
+            std::vector<Application::Texture>  textures;
 
         private:
 
@@ -181,7 +162,7 @@ namespace vlb {
 
             vk::UniqueDescriptorSetLayout descriptorSetLayout;
 
-            std::vector<Sampler>  samplers;
+            std::vector<Application::Sampler>  samplers;
             std::vector<Node>     nodes;
             std::vector<Node>     linearNodes;
             std::vector<Camera>   cameras;

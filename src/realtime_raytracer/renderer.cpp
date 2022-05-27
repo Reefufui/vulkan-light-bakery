@@ -176,7 +176,8 @@ namespace vlb {
                 this->surfaceFormat,
                 this->depthFormat,
 
-                &this->sceneManager
+                &this->sceneManager,
+                &this->skyboxManager
         };
         this->ui.init(uiInitInfo, commandBuffer);
         flushGraphicsCommandBuffer(commandBuffer);
@@ -184,7 +185,7 @@ namespace vlb {
 
     void Renderer::initSceneManager()
     {
-        auto res = Scene_t::VulkanResources
+        auto context = Scene_t::VulkanResources
         {
             this->physicalDevice,
                 this->device.get(),
@@ -197,7 +198,24 @@ namespace vlb {
                 static_cast<uint32_t>(this->swapchainImageViews.size())
         };
 
-        this->sceneManager.passVulkanResources(res);
+        this->sceneManager.passVulkanResources(context);
+    }
+
+    void Renderer::initSkyboxManager()
+    {
+        auto context = Skybox_t::VulkanContext
+        {
+            this->physicalDevice,
+                this->device.get(),
+                this->queue.transfer,
+                this->commandPool.transfer.get(),
+                this->queue.graphics,
+                this->commandPool.graphics.get(),
+                this->queue.compute,
+                this->commandPool.compute.get()
+        };
+
+        this->skyboxManager.passVulkanContext(context);
     }
 
     void Renderer::render()
@@ -224,6 +242,7 @@ namespace vlb {
         createSyncObjects();
 
         initSceneManager();
+        initSkyboxManager();
         initUI();
 
         auto aspect = static_cast<float>(this->surfaceExtent.width) / static_cast<float>(this->surfaceExtent.height);

@@ -168,6 +168,7 @@ namespace vlb {
         this->depthFormat = info.depthFormat;
 
         this->pSceneManager = info.pSceneManager;
+        this->pSkyboxManager = info.pSkyboxManager;
 
         createDepthBuffer();
         createImguiRenderPass();
@@ -284,9 +285,10 @@ namespace vlb {
         colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
         colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 
-        this->fileDialog = ImGui::FileBrowser{};
-        this->fileDialog.SetTitle("Choose model file");
-        this->fileDialog.SetTypeFilters({ ".gltf", ".glb", ".*" });
+        this->sceneFileDialog = ImGui::FileBrowser{};
+        this->sceneFileDialog.SetTitle("Scene Browser");
+        this->skyboxFileDialog = ImGui::FileBrowser{};
+        this->skyboxFileDialog.SetTitle("Skybox Browser");
 
         deserialize();
     }
@@ -310,7 +312,6 @@ namespace vlb {
             camera->reset();
         }
 
-
         const auto& scene = this->pSceneManager->getScene();
         int cameraIndex = scene->getCameraIndex();
         ImGui::SliderInt("Camera index", &cameraIndex, 0, scene->getCamerasCount() - 1);
@@ -323,7 +324,7 @@ namespace vlb {
 
         const auto& sceneNames = this->pSceneManager->getSceneNames();
         int sceneIndex = this->pSceneManager->getSceneIndex();
-        if (ImGui::BeginCombo("##combo", sceneNames[sceneIndex].c_str()))
+        if (ImGui::BeginCombo("##scene", sceneNames[sceneIndex].c_str()))
         {
             for (int n = 0; n < sceneNames.size(); ++n)
             {
@@ -340,32 +341,89 @@ namespace vlb {
         {
             ImGui::SameLine();
 
-            if (ImGui::Button("+", squareButtonSize))
+            if (ImGui::Button("+##push_scene", squareButtonSize))
             {
-                this->fileDialog.Open();
+                this->sceneFileDialog.SetTypeFilters({ ".gltf", ".glb", ".*" });
+                this->sceneFileDialog.Open();
             }
 
-            if (this->fileDialog.HasSelected())
+            if (this->sceneFileDialog.HasSelected())
             {
                 try
                 {
-                    auto path = this->fileDialog.GetSelected().string();
+                    auto path = this->sceneFileDialog.GetSelected().string();
                     this->pSceneManager->pushScene(path);
                 }
                 catch(std::runtime_error& e)
                 {
                     std::cerr << e.what() << "\n";
                 }
-                this->fileDialog.ClearSelected();
+                this->sceneFileDialog.ClearSelected();
+                this->sceneFileDialog.Close();
             }
         }
 
         if (this->pSceneManager->getScenesCount() > 1)
         {
             ImGui::SameLine();
-            if (ImGui::Button("-", squareButtonSize))
+            if (ImGui::Button("-##pop_scene", squareButtonSize))
             {
                 this->pSceneManager->popScene();
+            }
+        }
+    }
+
+    void UI::skyboxManager()
+    {
+        ImGui::Text("Choose skybox:");
+
+        const auto& skyboxNames = this->pSkyboxManager->getSkyboxNames();
+        int skyboxIndex = this->pSkyboxManager->getSkyboxIndex();
+        if (ImGui::BeginCombo("##skybox", skyboxNames[skyboxIndex].c_str()))
+        {
+            for (int n = 0; n < skyboxNames.size(); ++n)
+            {
+                bool is_selected = skyboxIndex == n;
+                if (ImGui::Selectable(skyboxNames[n].c_str(), is_selected))
+                    skyboxIndex = n;
+            }
+            ImGui::EndCombo();
+        }
+        this->pSkyboxManager->setSkyboxIndex(skyboxIndex);
+
+        const auto squareButtonSize = ImVec2{ImGui::GetFrameHeight(), ImGui::GetFrameHeight()};
+
+        {
+            ImGui::SameLine();
+
+            if (ImGui::Button("+##push_skybox", squareButtonSize))
+            {
+                this->skyboxFileDialog.SetTypeFilters({ ".jpg", ".png", ".bmp", ".*" });
+                this->skyboxFileDialog.Open();
+            }
+
+            if (this->skyboxFileDialog.HasSelected())
+            {
+                try
+                {
+                    auto path = this->skyboxFileDialog.GetSelected().string();
+                    this->pSkyboxManager->pushSkybox(path);
+                }
+                catch(std::runtime_error& e)
+                {
+                    std::cerr << e.what() << "\n";
+                }
+                this->skyboxFileDialog.ClearSelected();
+                this->skyboxFileDialog.Close();
+            }
+        }
+
+        if (this->pSkyboxManager->getSkyboxCount() > 1)
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("-##pop_skybox", squareButtonSize))
+            {
+                this->pSkyboxManager->popSkybox();
             }
         }
     }
@@ -402,6 +460,7 @@ namespace vlb {
             ImGui::BeginTabBar("a");
             if (ImGui::BeginTabItem("Scene"))
             {
+                skyboxManager();
                 sceneManager();
                 ImGui::EndTabItem();
             }
@@ -419,7 +478,8 @@ namespace vlb {
         }
         ImGui::End();
 
-        fileDialog.Display();
+        sceneFileDialog.Display();
+        skyboxFileDialog.Display();
         ImGui::EndFrame();
     }
 
@@ -454,7 +514,7 @@ namespace vlb {
             file >> json;
 
             this->pSceneManager->setSceneIndex(json["selectedSceneIndex"].get<int>());
-            this->fileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
+            this->sceneFileDialog.SetPwd(json["assetsBrowsingDir"].get<std::string>());
 
             for (const auto& jsonScene : json["scenes"])
             {
@@ -491,6 +551,11 @@ namespace vlb {
             this->pSceneManager->pushScene(fileName);
             this->pSceneManager->setSceneIndex(0);
         }
+
+        // TODO: skybox serialization
+        std::string fileName = VLB_DEFAULT_SKYBOX_NAME;
+        this->pSkyboxManager->pushSkybox(fileName);
+        this->pSkyboxManager->setSkyboxIndex(0);
     }
 
     void UI::serialize()
@@ -499,7 +564,7 @@ namespace vlb {
 
         nlohmann::json json{};
         json["selectedSceneIndex"] = this->pSceneManager->getSceneIndex();
-        json["assetsBrowsingDir"] = this->fileDialog.GetPwd();
+        json["assetsBrowsingDir"] = this->sceneFileDialog.GetPwd();
 
         json["scenes"] = nlohmann::json::array();
         for (int i{}; i < this->pSceneManager->getScenesCount(); ++i)

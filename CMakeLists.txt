@@ -24,6 +24,7 @@ include_directories(src src/vendor src/vendor/tqdm/include src/baker shaders)
 add_library(core SHARED
     src/application.cpp
     src/scene_manager.cpp
+    src/skybox_manager.cpp
     src/camera.cpp
     src/vendor/define_implementations.cpp
     )

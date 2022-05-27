@@ -28,6 +28,7 @@ namespace vlb {
         layouts.push_back(this->sceneManager.getScene()->getDescriptorSetLayout());
         layouts.push_back(this->descriptorSetLayout.resultImage.get());
         layouts.push_back(this->sceneManager.getCamera()->getDescriptorSetLayout());
+        layouts.push_back(this->skyboxManager.getSkybox()->getDescriptorSetLayout());
 
         const std::vector<vk::PushConstantRange> constants{
             { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(Raytracer::Constants) }
@@ -154,7 +155,7 @@ namespace vlb {
         this->descriptorPool = this->device.get().createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
-                .setMaxSets(2)
+                .setMaxSets(4)
                 .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet
                     | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind)
                 );
@@ -175,13 +176,22 @@ namespace vlb {
                     .setSetLayouts(descriptorSetLayout.resultImage.get())
                     ).front());
 
-        this->sceneManager.getScene()->updateSceneDescriptorSets(this->descriptorSet.scene.get());
+        auto& skybox = this->skyboxManager.getSkybox();
+        auto skyboxLayout = skybox->getDescriptorSetLayout();
+        this->descriptorSet.skybox = std::move(this->device.get().allocateDescriptorSetsUnique(
+                    vk::DescriptorSetAllocateInfo{}
+                    .setDescriptorPool(this->descriptorPool.get())
+                    .setSetLayouts(skyboxLayout)
+                    ).front());
+
+        scene->updateSceneDescriptorSets(this->descriptorSet.scene.get());
         updateResultImageDescriptorSets();
+        skybox->updateSkyboxDescriptorSets(this->descriptorSet.skybox.get());
     }
 
     void Raytracer::recordDrawCommandBuffer(uint64_t imageIndex)
     {
-        if (this->sceneManager.sceneChanged())
+        if (this->sceneManager.sceneChanged() || this->skyboxManager.skyboxChanged())
         {
             handleSceneChange();
         }
@@ -198,6 +208,7 @@ namespace vlb {
         descriptorSets.push_back(this->descriptorSet.scene.get());
         descriptorSets.push_back(this->descriptorSet.resultImage.get());
         descriptorSets.push_back(this->sceneManager.getCamera()->update()->getDescriptorSet(imageIndex));
+        descriptorSets.push_back(this->descriptorSet.skybox.get());
 
         commandBuffer->bindDescriptorSets(
                 vk::PipelineBindPoint::eRayTracingKHR,
@@ -313,6 +324,7 @@ namespace vlb {
         createShaderBindingTable();
         this->descriptorSet.scene.reset();
         this->descriptorSet.resultImage.reset();
+        this->descriptorSet.skybox.reset();
         this->descriptorPool.reset();
         createDescriptorSets();
     }

@@ -81,6 +81,7 @@ namespace vlb {
         return shared_from_this();
     }
 
+    // TODO: make manager's private (all scenes have same ds layout)
     Scene Scene_t::createDescriptorSetLayout()
     {
         std::vector<vk::DescriptorSetLayoutBinding> bindings{
@@ -102,7 +103,7 @@ namespace vlb {
                 vk::DescriptorSetLayoutBinding{}
             .setBinding(3)
                 .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-                .setDescriptorCount(this->textures.size() ? this->textures.size() : 1)
+                .setDescriptorCount(this->textures.size())
                 .setStageFlags(vk::ShaderStageFlagBits::eClosestHitKHR),
                 vk::DescriptorSetLayoutBinding{}
             .setBinding(4)
@@ -175,7 +176,7 @@ namespace vlb {
         std::vector<vk::DescriptorImageInfo> texturesDescriptorInfo{};
         for (const auto& texture : this->textures)
         {
-            texturesDescriptorInfo.push_back(texture->descriptor);
+            texturesDescriptorInfo.push_back(texture.descriptor);
         }
 
         vk::WriteDescriptorSet texturesWriteDS{};
@@ -185,22 +186,19 @@ namespace vlb {
             .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
             .setImageInfo(texturesDescriptorInfo);
 
-        if (this->bakedLight.lmax)
-        {
-            vk::DescriptorBufferInfo shDescriptorInfo{};
-            shDescriptorInfo
-                .setBuffer(this->bakedLight.coeffs.handle.get())
-                .setRange(VK_WHOLE_SIZE);
+        vk::DescriptorBufferInfo shDescriptorInfo{};
+        shDescriptorInfo
+            .setBuffer(this->bakedLight.coeffs.handle.get())
+            .setRange(VK_WHOLE_SIZE);
 
-            vk::WriteDescriptorSet shWriteDS{};
-            shWriteDS
-                .setDstSet(targetDS)
-                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
-                .setDstBinding(4)
-                .setBufferInfo(shDescriptorInfo);
+        vk::WriteDescriptorSet shWriteDS{};
+        shWriteDS
+            .setDstSet(targetDS)
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setDstBinding(4)
+            .setBufferInfo(shDescriptorInfo);
 
-            this->device.updateDescriptorSets(shWriteDS, nullptr);
-        }
+        this->device.updateDescriptorSets(shWriteDS, nullptr);
 
         this->device.updateDescriptorSets(tlasWriteDS, nullptr);
         this->device.updateDescriptorSets(objDescWriteDS, nullptr);
@@ -642,6 +640,8 @@ namespace vlb {
         {
             this->bakedLight.gridStep = glm::vec3(0.0f);
             this->bakedLight.lmax     = 0u;
+            std::vector<uint8_t> dummy = {0, 0, 0};
+            this->bakedLight.coeffs = toBuffer(std::move(dummy));
         }
 
         return shared_from_this();
@@ -679,7 +679,7 @@ namespace vlb {
                 }
             };
 
-            Sampler sampler{};
+            Application::Sampler sampler{};
             sampler.minFilter = toVkFilterMode(gltfSampler.minFilter);
             sampler.magFilter = toVkFilterMode(gltfSampler.magFilter);
             sampler.addressModeU = toVkWrapMode(gltfSampler.wrapS);
@@ -940,131 +940,34 @@ namespace vlb {
 
     Scene Scene_t::loadTextures()
     {
+        vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+
         for (const auto& gltfTexture : this->model.textures)
         {
-            Texture texture{new Texture_t()};
-
             const tinygltf::Image& gltfImage = this->model.images[gltfTexture.source];
             if (gltfImage.component == 3)
             {
                 throw std::runtime_error("RGB (not RGBA) textures not allowed!");
             }
 
-            vk::BufferUsageFlags usage             = vk::BufferUsageFlagBits::eTransferSrc;
-            vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
             Application::Buffer staging = Application::createBuffer(this->device, this->physicalDevice, gltfImage.image.size(), usage, memoryProperty, gltfImage.image.data());
 
-            std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
             vk::Extent3D extent{static_cast<uint32_t>(gltfImage.width), static_cast<uint32_t>(gltfImage.height), 1};
             uint32_t mipLevels{static_cast<uint32_t>(floor(log2(std::min(gltfImage.width, gltfImage.height))) + 1.0)};
+            Application::Sampler sampler = gltfTexture.sampler == -1 ? Application::Sampler{} : this->samplers[gltfTexture.sampler];
 
-            texture->image.handle = device.createImageUnique(
-                    vk::ImageCreateInfo{}
-                    .setImageType(vk::ImageType::e2D)
-                    .setFormat(vk::Format::eB8G8R8A8Unorm)
-                    .setArrayLayers(1)
-                    .setMipLevels(mipLevels)
-                    .setSamples(vk::SampleCountFlagBits::e1)
-                    .setTiling(vk::ImageTiling::eOptimal)
-                    .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc)
-                    .setSharingMode(vk::SharingMode::eConcurrent)
-                    .setQueueFamilyIndices(queueFamilyIndices)
-                    .setInitialLayout(vk::ImageLayout::eUndefined)
-                    .setExtent(extent)
-                    );
+            Application::Texture texture = Application::bufferToImage(this->device, this->physicalDevice, this->commandPool.graphics, this->queue.graphics,
+                    staging, sampler, extent, mipLevels);
 
-            auto memoryRequirements = this->device.getImageMemoryRequirements(texture->image.handle.get());
-            memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
-
-            texture->image.memory = this->device.allocateMemoryUnique(
-                    vk::MemoryAllocateInfo{}
-                    .setAllocationSize(memoryRequirements.size)
-                    .setMemoryTypeIndex(Application::getMemoryType(this->physicalDevice, memoryRequirements, memoryProperty))
-                    );
-
-            device.bindImageMemory(texture->image.handle.get(), texture->image.memory.get(), 0);
-
-            auto blittingCmdBuffer = Application::recordCommandBuffer(this->device, this->commandPool.graphics);
-
-            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
-                    { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-
-            blittingCmdBuffer.copyBufferToImage(
-                    staging.handle.get(),
-                    texture->image.handle.get(),
-                    vk::ImageLayout::eTransferDstOptimal,
-                    vk::BufferImageCopy{}
-                    .setImageSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
-                    .setImageExtent(extent)
-                    );
-
-            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
-                    { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-
-            for (uint32_t lvl = 1; lvl < mipLevels; ++lvl)
-            {
-                auto getMipLevelOffset = [extent](uint32_t lvl)
-                {
-                    return vk::Offset3D{static_cast<int32_t>(extent.width >> lvl), static_cast<int32_t>(extent.height >> lvl), 1};
-                };
-
-                vk::ImageBlit imageBlit{};
-                imageBlit
-                    .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, lvl - 1, 0, 1 })
-                    .setDstSubresource({ vk::ImageAspectFlagBits::eColor, lvl,     0, 1 })
-                    .setSrcOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl - 1) })
-                    .setDstOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl    ) });
-
-                Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
-                        { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
-
-                blittingCmdBuffer.blitImage(texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, 1, &imageBlit, vk::Filter::eLinear);
-
-                Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
-                        { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
-            }
-
-            Application::setImageLayout(blittingCmdBuffer, texture->image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
-                    { vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 });
-
-            Application::flushCommandBuffer(this->device, this->commandPool.graphics, blittingCmdBuffer, queue.graphics);
-
-            Sampler textureSampler = gltfTexture.sampler == -1 ? Sampler{} : this->samplers[gltfTexture.sampler];
-
-            texture->sampler = this->device.createSamplerUnique(
-                    vk::SamplerCreateInfo{}
-                    .setMagFilter(textureSampler.magFilter)
-                    .setMinFilter(textureSampler.minFilter)
-                    .setMipmapMode(vk::SamplerMipmapMode::eLinear)
-                    .setAddressModeU(textureSampler.addressModeU)
-                    .setAddressModeV(textureSampler.addressModeV)
-                    .setAddressModeW(textureSampler.addressModeW)
-                    .setCompareOp(vk::CompareOp::eNever)
-                    .setBorderColor(vk::BorderColor::eFloatOpaqueWhite)
-                    .setMaxAnisotropy(1.0)
-                    .setAnisotropyEnable(VK_FALSE)
-                    .setMaxLod(static_cast<float>(mipLevels))
-                    .setMaxAnisotropy(8.0f)
-                    .setAnisotropyEnable(VK_TRUE));
-
-            texture->image.imageView = this->device.createImageViewUnique(
-                    vk::ImageViewCreateInfo{}
-                    .setImage(texture->image.handle.get())
-                    .setViewType(vk::ImageViewType::e2D)
-                    .setFormat(vk::Format::eB8G8R8A8Unorm)
-                    .setComponents({ vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eA })
-                    .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
-                    );
-
-            texture->image.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal; // TODO: change layout on go as member
-
-            texture->descriptor
-                .setSampler(texture->sampler.get())
-                .setImageView(texture->image.imageView.get())
-                .setImageLayout(texture->image.imageLayout);
-
-            this->textures.push_back(texture);
+            this->textures.push_back(std::move(texture));
         }
+
+        std::array<float, 4> white1x1 = { 1.0f, 1.0f, 1.0f, 1.0f};
+        Application::Buffer staging = Application::createBuffer(this->device, this->physicalDevice, 4 * sizeof(float), usage, memoryProperty, white1x1.data());
+        Application::Texture dummyTexture = Application::bufferToImage(this->device, this->physicalDevice, this->commandPool.graphics, this->queue.graphics,
+                staging, Application::Sampler{}, {1, 1, 1}, 1);
+        this->textures.push_back(std::move(dummyTexture));
 
         return shared_from_this();
     }
@@ -1213,7 +1116,7 @@ namespace vlb {
 
     SceneManager::~SceneManager()
     {
-        while (scenes.size())
+        while (this->scenes.size())
         {
             popScene();
         }

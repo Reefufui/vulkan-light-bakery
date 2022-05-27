@@ -42,6 +42,23 @@ namespace vlb {
                 vk::ImageLayout        imageLayout;
             };
 
+            struct Sampler
+            {
+                vk::Filter magFilter = vk::Filter::eLinear;
+                vk::Filter minFilter = vk::Filter::eLinear;
+                vk::SamplerAddressMode addressModeU = vk::SamplerAddressMode::eRepeat;
+                vk::SamplerAddressMode addressModeV = vk::SamplerAddressMode::eRepeat;
+                vk::SamplerAddressMode addressModeW = vk::SamplerAddressMode::eRepeat;
+            };
+
+            struct Texture
+            {
+                Application::Image      image;
+                uint32_t                mipLevels;
+                vk::DescriptorImageInfo descriptor;
+                vk::UniqueSampler       sampler;
+            };
+
             struct ShaderBindingTable
             {
                 std::vector<vk::StridedDeviceAddressRegionKHR> strides;
@@ -99,6 +116,8 @@ namespace vlb {
             vk::UniqueShaderModule createShaderModule(const std::string& filename);
             ShaderBindingTable     createShaderBindingTable(vk::Pipeline& pipeline, unsigned missCount, unsigned hitCount);
 
+            Application::Texture bufferToImage(const Application::Buffer& buffer, const Application::Sampler& sampler, vk::Extent3D extent, uint32_t mipLevels);
+
         private:
 
             vk::UniqueDebugUtilsMessengerEXT debugMessenger;
@@ -146,6 +165,16 @@ namespace vlb {
             static vk::UniqueShaderModule createShaderModule(
                     vk::Device& device,
                     const std::string& filename);
+
+            static Application::Texture bufferToImage(
+                    vk::Device& device,
+                    vk::PhysicalDevice& physicalDevice,
+                    vk::CommandPool graphicsCommandPool,
+                    vk::Queue graphicsQueue,
+                    const Application::Buffer& buffer,
+                    const Application::Sampler& sampler,
+                    vk::Extent3D extent,
+                    uint32_t mipLevels);
 
             static ShaderBindingTable createShaderBindingTable(
                     vk::Device& device,

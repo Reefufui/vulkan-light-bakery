@@ -663,5 +663,129 @@ namespace vlb {
         return std::move(sbt);
     }
 
+    Application::Texture Application::bufferToImage(const Application::Buffer& buffer, const Application::Sampler& sampler, vk::Extent3D extent, uint32_t mipLevels)
+    {
+        return bufferToImage(this->device.get(), this->physicalDevice, this->commandPool.graphics.get(), this->queue.graphics, buffer, sampler, extent, mipLevels);
+    }
+
+    Application::Texture Application::bufferToImage(
+            vk::Device& device,
+            vk::PhysicalDevice& physicalDevice,
+            vk::CommandPool graphicsCommandPool,
+            vk::Queue graphicsQueue,
+            const Application::Buffer& buffer,
+            const Application::Sampler& sampler,
+            vk::Extent3D extent,
+            uint32_t mipLevels)
+    {
+        Application::Texture texture;
+
+        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
+
+        texture.image.handle = device.createImageUnique(
+                vk::ImageCreateInfo{}
+                .setImageType(vk::ImageType::e2D)
+                .setFormat(vk::Format::eB8G8R8A8Unorm)
+                .setArrayLayers(1)
+                .setMipLevels(mipLevels)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setTiling(vk::ImageTiling::eOptimal)
+                .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc)
+                .setSharingMode(vk::SharingMode::eConcurrent)
+                .setQueueFamilyIndices(queueFamilyIndices)
+                .setInitialLayout(vk::ImageLayout::eUndefined)
+                .setExtent(extent)
+                );
+
+        auto memoryRequirements = device.getImageMemoryRequirements(texture.image.handle.get());
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+        texture.image.memory = device.allocateMemoryUnique(
+                vk::MemoryAllocateInfo{}
+                .setAllocationSize(memoryRequirements.size)
+                .setMemoryTypeIndex(Application::getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
+                );
+
+        device.bindImageMemory(texture.image.handle.get(), texture.image.memory.get(), 0);
+
+        auto blittingCmdBuffer = Application::recordCommandBuffer(device, graphicsCommandPool);
+
+        Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+        blittingCmdBuffer.copyBufferToImage(
+                buffer.handle.get(),
+                texture.image.handle.get(),
+                vk::ImageLayout::eTransferDstOptimal,
+                vk::BufferImageCopy{}
+                .setImageSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                .setImageExtent(extent)
+                );
+
+        Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+        for (uint32_t lvl = 1; lvl < mipLevels; ++lvl)
+        {
+            auto getMipLevelOffset = [extent](uint32_t lvl)
+            {
+                return vk::Offset3D{static_cast<int32_t>(extent.width >> lvl), static_cast<int32_t>(extent.height >> lvl), 1};
+            };
+
+            vk::ImageBlit imageBlit{};
+            imageBlit
+                .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, lvl - 1, 0, 1 })
+                .setDstSubresource({ vk::ImageAspectFlagBits::eColor, lvl,     0, 1 })
+                .setSrcOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl - 1) })
+                .setDstOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl    ) });
+
+            Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                    { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+
+            blittingCmdBuffer.blitImage(texture.image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, texture.image.handle.get(), vk::ImageLayout::eTransferDstOptimal, 1, &imageBlit, vk::Filter::eLinear);
+
+            Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                    { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+        }
+
+        Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                { vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 });
+
+        Application::flushCommandBuffer(device, graphicsCommandPool, blittingCmdBuffer, graphicsQueue);
+
+        texture.sampler = device.createSamplerUnique(
+                vk::SamplerCreateInfo{}
+                .setMagFilter(sampler.magFilter)
+                .setMinFilter(sampler.minFilter)
+                .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                .setAddressModeU(sampler.addressModeU)
+                .setAddressModeV(sampler.addressModeV)
+                .setAddressModeW(sampler.addressModeW)
+                .setCompareOp(vk::CompareOp::eNever)
+                .setBorderColor(vk::BorderColor::eFloatOpaqueWhite)
+                .setMaxAnisotropy(1.0)
+                .setAnisotropyEnable(VK_FALSE)
+                .setMaxLod(static_cast<float>(mipLevels))
+                .setMaxAnisotropy(8.0f)
+                .setAnisotropyEnable(VK_TRUE));
+
+        texture.image.imageView = device.createImageViewUnique(
+                vk::ImageViewCreateInfo{}
+                .setImage(texture.image.handle.get())
+                .setViewType(vk::ImageViewType::e2D)
+                .setFormat(vk::Format::eB8G8R8A8Unorm)
+                .setComponents({ vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eA })
+                .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
+                );
+
+        texture.image.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal; // TODO: change layout on go as member
+
+        texture.descriptor
+            .setSampler(texture.sampler.get())
+            .setImageView(texture.image.imageView.get())
+            .setImageLayout(texture.image.imageLayout);
+
+        return texture;
+    }
 }
 
