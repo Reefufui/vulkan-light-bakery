@@ -4,6 +4,7 @@
 #define SKYBOX_MANAGER_HPP
 
 #define VLB_DEFAULT_SKYBOX_NAME "default_skybox.jpg"
+#define WORKGROUP_SIZE 16
 
 #include "application.hpp"
 
@@ -32,6 +33,7 @@ namespace vlb {
 
             unsigned char* texels;
             Application::Texture texture;
+            Application::Buffer SHCoeffs;
             vk::UniqueDescriptorSetLayout descriptorSetLayout;
 
             // Vulkan resourses
@@ -77,11 +79,9 @@ namespace vlb {
 
             Skybox passVulkanContext(VulkanContext& context);
             Skybox createTexture();
-            Skybox computeSH();
-            Skybox createDescriptorSetLayout();
-            Skybox updateSkyboxDescriptorSets(vk::DescriptorSet targetDS);
-
-            vk::DescriptorSetLayout getDescriptorSetLayout();
+            Skybox createSHBuffer();
+            Skybox updateDescriptorSets(vk::DescriptorSet targetDS);
+            Skybox computeSH(vk::Pipeline computePipeline, vk::PipelineLayout layout, vk::DescriptorSet ds);
 
             std::string getName();
     };
@@ -98,6 +98,18 @@ namespace vlb {
 
             Skybox_t::VulkanContext context;
 
+            // Computing SH
+            vk::UniqueDescriptorPool      descriptorPool;
+            vk::UniqueDescriptorSet       descriptorSet;
+            vk::UniqueDescriptorSetLayout descriptorSetLayout;
+            vk::UniquePipeline            pipeline;
+            vk::UniquePipelineCache       pipelineCache;
+            vk::UniquePipelineLayout      pipelineLayout;
+
+            void createSHComputePipeline();
+            void createDescriptorSetLayout();
+            void createDescriptorSets();
+
         public:
 
             void passVulkanContext(Skybox_t::VulkanContext& context);
@@ -107,6 +119,8 @@ namespace vlb {
             const size_t              getSkyboxCount();
             std::vector<std::string>& getSkyboxNames();
 
+            vk::DescriptorSetLayout getDescriptorSetLayout();
+            vk::DescriptorSet getDescriptorSet();
             const bool                skyboxChanged();
 
             SkyboxManager& setSkyboxIndex(int skyboxIndex);

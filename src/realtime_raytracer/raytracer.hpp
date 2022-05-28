@@ -33,7 +33,6 @@ namespace vlb {
             {
                 vk::UniqueDescriptorSet scene;
                 vk::UniqueDescriptorSet resultImage;
-                vk::UniqueDescriptorSet skybox;
             };
 
             struct Constants

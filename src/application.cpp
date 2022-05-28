@@ -3,6 +3,7 @@
 #include "application.hpp"
 
 #include <fstream>
+#include <limits>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -262,8 +263,9 @@ namespace vlb {
         vk::Fence fence = device.createFence(vk::FenceCreateInfo());
         queue.submit(submitInfo, fence);
         try {
-            auto r = device.waitForFences(fence, false, 1000000000);
-            if (r != vk::Result::eSuccess) std::cout << "flushing failed!\n";
+            auto timeout = std::numeric_limits<uint64_t>::max();
+            auto r = device.waitForFences(fence, false, timeout);
+            if (r != vk::Result::eSuccess) std::cout << "flushing failed with result code: " << r << "\n";
         }
         catch (std::exception const &e)
         {
@@ -690,7 +692,8 @@ namespace vlb {
                 .setMipLevels(mipLevels)
                 .setSamples(vk::SampleCountFlagBits::e1)
                 .setTiling(vk::ImageTiling::eOptimal)
-                .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc)
+                .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc
+                    | vk::ImageUsageFlagBits::eStorage)
                 .setSharingMode(vk::SharingMode::eConcurrent)
                 .setQueueFamilyIndices(queueFamilyIndices)
                 .setInitialLayout(vk::ImageLayout::eUndefined)

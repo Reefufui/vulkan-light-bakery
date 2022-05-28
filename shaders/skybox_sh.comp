@@ -1,0 +1,43 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_scalar_block_layout  : enable
+//#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+//#extension GL_ARB_separate_shader_objects : enable
+
+#include "sh_common.h"
+
+#define WORKGROUP_SIZE 16
+
+layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants
+{
+    int width;
+    int height;
+} constants;
+
+layout (set = 0, binding = 0) uniform sampler2D skybox;
+layout (set = 0, binding = 1, scalar) buffer buff { vec3 coeffs[16]; };
+
+void main()
+{
+    if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height) return;
+
+    const ivec2 xy        = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    const float phi       = x2phi(xy.x, constants.width) - PI / 2.0f;
+    const float theta     = y2theta(xy.y, constants.height);
+    const vec3  dir       = toVector(phi, theta);
+    const vec3  color     = texelFetch(skybox, xy, 0).xyz;
+    const float pixelArea = (2.0f * PI / constants.width) * (PI / constants.height);
+    const float weight    = pixelArea * sin(theta);
+
+    for (int l = 0; l < 4; l++)
+    {
+        for (int m = -l; m < l + 1; m++)
+        {
+            coeffs[l * (l + 1) + m] += SH(l, m, dir.xzy) * color * weight;
+        }
+    }
+}
+

@@ -4,6 +4,7 @@
 
 #include <stb_image.h>
 #include <filesystem>
+#include <cmath>
 
 namespace vlb {
 
@@ -61,9 +62,69 @@ namespace vlb {
         return shared_from_this();
     }
 
-    Skybox Skybox_t::computeSH()
+    Skybox Skybox_t::createSHBuffer()
     {
-        // TODO
+        using enum vk::BufferUsageFlagBits;
+        using enum vk::MemoryPropertyFlagBits;
+        vk::BufferUsageFlags    usg{ eStorageBuffer };
+        vk::MemoryPropertyFlags mem{ eHostVisible | eHostCoherent };
+
+        float init[16 * 3] = {0.f};
+        this->SHCoeffs = Application::createBuffer(this->device, this->physicalDevice, 16 * 3 * sizeof(float), usg, mem, init);
+
+        return shared_from_this();
+    }
+
+    Skybox Skybox_t::updateDescriptorSets(vk::DescriptorSet targetDS)
+    {
+        vk::WriteDescriptorSet writeImage{};
+        writeImage
+            .setDstSet(targetDS)
+            .setDstBinding(0)
+            .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+            .setImageInfo(this->texture.descriptor);
+
+        this->device.updateDescriptorSets(writeImage, nullptr);
+
+        vk::DescriptorBufferInfo bufferInfo{};
+        bufferInfo
+            .setBuffer(SHCoeffs.handle.get())
+            .setOffset(0)
+            .setRange(SHCoeffs.size);
+
+        vk::WriteDescriptorSet writeBuffer{};
+        writeBuffer
+            .setDstSet(targetDS)
+            .setDstBinding(1)
+            .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+            .setBufferInfo(bufferInfo);
+
+        this->device.updateDescriptorSets(writeBuffer, nullptr);
+
+        return shared_from_this();
+    }
+
+    Skybox Skybox_t::computeSH(vk::Pipeline computePipeline, vk::PipelineLayout layout, vk::DescriptorSet ds)
+    {
+        auto cmd = Application::recordCommandBuffer(this->device, this->commandPool.compute);
+        cmd.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                layout,
+                0,
+                { ds },
+                {});
+        struct PushConstants
+        {
+            uint32_t width;
+            uint32_t height;
+        } pushConstants = { static_cast<uint32_t>(this->width), static_cast<uint32_t>(this->height) };
+        cmd.pushConstants(
+                layout,
+                vk::ShaderStageFlagBits::eCompute,
+                0, sizeof(PushConstants), &pushConstants
+                );
+        cmd.dispatch((uint32_t)ceil(this->width / float(WORKGROUP_SIZE)), (uint32_t)ceil(this->height / float(WORKGROUP_SIZE)), 1);
+        Application::flushCommandBuffer(this->device, this->commandPool.compute, cmd, this->queue.compute);
 
         return shared_from_this();
     }
@@ -73,41 +134,100 @@ namespace vlb {
         return this->name;
     }
 
-    Skybox Skybox_t::createDescriptorSetLayout()
+    void SkyboxManager::createDescriptorSetLayout()
     {
         std::vector<vk::DescriptorSetLayoutBinding> bindings{
             vk::DescriptorSetLayoutBinding{}
             .setBinding(0)
                 .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
                 .setDescriptorCount(1)
-                .setStageFlags(vk::ShaderStageFlagBits::eMissKHR),
+                .setStageFlags(vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eMissKHR),
+
+                vk::DescriptorSetLayoutBinding{}
+            .setBinding(1)
+                .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+                .setDescriptorCount(1)
+                .setStageFlags(vk::ShaderStageFlagBits::eCompute | vk::ShaderStageFlagBits::eMissKHR)
         };
 
-        this->descriptorSetLayout = this->device.createDescriptorSetLayoutUnique(
+        this->descriptorSetLayout = context.device.createDescriptorSetLayoutUnique(
                 vk::DescriptorSetLayoutCreateInfo{}
                 .setBindings(bindings)
                 );
-
-        return shared_from_this();
     }
 
-    vk::DescriptorSetLayout Skybox_t::getDescriptorSetLayout()
+    vk::DescriptorSetLayout SkyboxManager::getDescriptorSetLayout()
     {
         return this->descriptorSetLayout.get();
     }
 
-    Skybox Skybox_t::updateSkyboxDescriptorSets(vk::DescriptorSet targetDS)
+    vk::DescriptorSet SkyboxManager::getDescriptorSet()
     {
-        vk::WriteDescriptorSet texturesWriteDS{};
-        texturesWriteDS
-            .setDstSet(targetDS)
-            .setDstBinding(0)
-            .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-            .setImageInfo(texture.descriptor);
+        return this->descriptorSet.get();
+    }
 
-        this->device.updateDescriptorSets(texturesWriteDS, nullptr);
+    void SkyboxManager::createDescriptorSets()
+    {
+        std::vector<vk::DescriptorPoolSize> poolSizes = {
+            {vk::DescriptorType::eStorageBuffer, 1},
+            {vk::DescriptorType::eCombinedImageSampler, 1}
+        };
 
-        return shared_from_this();
+        this->descriptorPool = context.device.createDescriptorPoolUnique(
+                vk::DescriptorPoolCreateInfo{}
+                .setPoolSizes(poolSizes)
+                .setMaxSets(1)
+                .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet
+                    | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind)
+                );
+
+        createDescriptorSetLayout();
+
+        this->descriptorSet = std::move(context.device.allocateDescriptorSetsUnique(
+                    vk::DescriptorSetAllocateInfo{}
+                    .setDescriptorPool(this->descriptorPool.get())
+                    .setSetLayouts(this->descriptorSetLayout.get())
+                    ).front());
+    }
+
+    void SkyboxManager::createSHComputePipeline()
+    {
+        vk::PushConstantRange pcRange{};
+        pcRange
+            .setStageFlags(vk::ShaderStageFlagBits::eCompute)
+            .setOffset(0)
+            .setSize(sizeof(uint32_t) * 2);
+
+        this->pipelineLayout = context.device.createPipelineLayoutUnique(
+                vk::PipelineLayoutCreateInfo{}
+                .setSetLayouts(this->descriptorSetLayout.get())
+                .setPushConstantRanges(pcRange)
+                );
+
+        vk::UniqueShaderModule shaderModule = Application::createShaderModule(context.device, "shaders/skybox_sh.comp.spv");
+
+        vk::PipelineShaderStageCreateInfo shaderStageCreateInfo{};
+        shaderStageCreateInfo
+            .setStage(vk::ShaderStageFlagBits::eCompute)
+            .setModule(shaderModule.get())
+            .setPName("main");
+
+        this->pipelineCache = context.device.createPipelineCacheUnique(vk::PipelineCacheCreateInfo());
+
+        auto[result, p] = context.device.createComputePipelineUnique(
+                pipelineCache.get(),
+                vk::ComputePipelineCreateInfo{}
+                .setStage(shaderStageCreateInfo)
+                .setLayout(this->pipelineLayout.get()));
+
+        if (result != vk::Result::eSuccess)
+        {
+            throw std::runtime_error("failed to create compute pipeline");
+        }
+        else
+        {
+            this->pipeline = std::move(p);
+        }
     }
 
     void SkyboxManager::passVulkanContext(Skybox_t::VulkanContext& context)
@@ -115,6 +235,9 @@ namespace vlb {
         this->context = context;
         this->skyboxChangedFlag = false;
         this->skyboxIndex = 0;
+
+        createDescriptorSets();
+        createSHComputePipeline();
     }
 
     Skybox& SkyboxManager::getSkybox(int index)
@@ -163,8 +286,9 @@ namespace vlb {
         Skybox skybox{new Skybox_t(fileName)};
         skybox->passVulkanContext(this->context);
         skybox->createTexture();
-        skybox->computeSH();
-        skybox->createDescriptorSetLayout();
+        skybox->createSHBuffer();
+        skybox->updateDescriptorSets(this->descriptorSet.get());
+        skybox->computeSH(this->pipeline.get(), this->pipelineLayout.get(), this->descriptorSet.get());
 
         this->skyboxes.push_back(skybox);
         this->skyboxNames.push_back(skybox->getName());
@@ -178,7 +302,9 @@ namespace vlb {
         Skybox skybox{new Skybox_t(ci.path)};
         skybox->passVulkanContext(this->context);
         skybox->createTexture();
-        skybox->createDescriptorSetLayout();
+        skybox->createSHBuffer();
+        skybox->updateDescriptorSets(this->descriptorSet.get());
+        skybox->computeSH(this->pipeline.get(), this->pipelineLayout.get(), this->descriptorSet.get());
 
         this->skyboxes.push_back(skybox);
         this->skyboxNames.push_back(ci.name);

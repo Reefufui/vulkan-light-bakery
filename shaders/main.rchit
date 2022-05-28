@@ -24,6 +24,7 @@ hitAttributeEXT vec3 attribs;
 layout(location = 0) rayPayloadInEXT vec3 color;
 layout(location = 1) rayPayloadEXT   bool inShadow;
 layout(location = 2) rayPayloadEXT   SHPayload shPayload;
+layout(location = 3) rayPayloadEXT   vec3 skyboxRadiance;
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1, scalar) buffer Instances { InstanceInfo i[]; } instanceInfo;
@@ -114,6 +115,12 @@ void main()
         specular               = constants.Cspecular * pow(max(dot(reflected, gl_WorldRayDirectionEXT), 0.0f), constants.Cglossyness);
     }
 
+    {
+        const uint flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
+        skyboxRadiance = vec3(0.0f);
+        traceRayEXT(topLevelAS, flags, 0xFF, 0, 0, 3, origin, 0.0f, normalize(hitNormal), 10000.0f, 3);
+    }
+
     if (constants.gridStep != vec3(0.0f))
     {
         vec3 ijk = floor(hitPosition / constants.gridStep);
@@ -161,7 +168,7 @@ void main()
     }
     else
     {
-        color = sRGB(baseColor.rgb * (constants.ambient + vec3(diffuse + specular))).rgb;
+        color = sRGB(baseColor.rgb * (constants.ambient * skyboxRadiance * 10000.0f + vec3(diffuse + specular))).rgb;
     }
 }
 
