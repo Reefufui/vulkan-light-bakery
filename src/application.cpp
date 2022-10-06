@@ -3,6 +3,7 @@
 #include "application.hpp"
 
 #include <fstream>
+#include <limits>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -262,8 +263,9 @@ namespace vlb {
         vk::Fence fence = device.createFence(vk::FenceCreateInfo());
         queue.submit(submitInfo, fence);
         try {
-            auto r = device.waitForFences(fence, false, 1000000000);
-            if (r != vk::Result::eSuccess) std::cout << "flushing failed!\n";
+            auto timeout = std::numeric_limits<uint64_t>::max();
+            auto r = device.waitForFences(fence, false, timeout);
+            if (r != vk::Result::eSuccess) std::cout << "flushing failed with result code: " << r << "\n";
         }
         catch (std::exception const &e)
         {
@@ -574,12 +576,12 @@ namespace vlb {
 #endif
     }
 
-    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Pipeline& pipeline)
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Pipeline& pipeline, unsigned missCount, unsigned hitCount)
     {
-        return createShaderBindingTable(this->device.get(), this->physicalDevice, pipeline);
+        return createShaderBindingTable(this->device.get(), this->physicalDevice, pipeline, missCount, hitCount);
     }
 
-    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& pipeline)
+    Application::ShaderBindingTable Application::createShaderBindingTable(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Pipeline& pipeline, unsigned missCount, unsigned hitCount)
     {
         Application::ShaderBindingTable sbt{};
 
@@ -592,7 +594,7 @@ namespace vlb {
             return (value + alignment - 1) & ~(alignment - 1);
         };
 
-        const uint32_t groupCount = 1u + 2u + 1u; // raygen + miss + shadow + chit
+        const uint32_t groupCount = 1u + missCount + hitCount; // raygen + miss + shadow + chit
         const uint32_t dataSize   = groupCount * RTPipelineProperties.shaderGroupHandleSize;
         std::vector<uint8_t> handles(dataSize);
         device.getRayTracingShaderGroupHandlesKHR(pipeline, 0, groupCount, dataSize, handles.data());
@@ -610,24 +612,24 @@ namespace vlb {
             | vk::BufferUsageFlagBits::eShaderDeviceAddress;
         const vk::MemoryPropertyFlags mem = vk::MemoryPropertyFlagBits::eHostVisible
             | vk::MemoryPropertyFlagBits::eHostCoherent;
-        const vk::DeviceSize          size = baseAlignment(groupSize) + baseAlignment(2 * groupSize) + baseAlignment(groupSize);
+        const vk::DeviceSize          size = baseAlignment(groupSize) + baseAlignment(missCount * groupSize) + baseAlignment(hitCount * groupSize);
 
         sbt.buffer = createBuffer(device, physicalDevice, size, usg, mem);
 
-        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // raygen
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{}
                 .setDeviceAddress(sbt.buffer.deviceAddress)
                 .setStride(baseAlignment(groupSize))
                 .setSize(baseAlignment(groupSize))
                 );
-        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // miss + shadow miss --> groupSize * 2
+        sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{}
                 .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(groupSize))
                 .setStride(groupSize)
-                .setSize(baseAlignment(2 * groupSize))
+                .setSize(baseAlignment(missCount * groupSize))
                 );
         sbt.strides.push_back(vk::StridedDeviceAddressRegionKHR{} // hit
-                .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(3 * groupSize))
+                .setDeviceAddress(sbt.buffer.deviceAddress + baseAlignment(groupSize) + baseAlignment(missCount * groupSize))
                 .setStride(groupSize)
-                .setSize(baseAlignment(groupSize))
+                .setSize(baseAlignment(hitCount * groupSize))
                 );
 
         uint8_t* dataPtr = reinterpret_cast<uint8_t*>(device.mapMemory(sbt.buffer.memory.get(), 0, groupCount * groupSize));
@@ -635,22 +637,158 @@ namespace vlb {
             const uint32_t handleSize = RTPipelineProperties.shaderGroupHandleSize;
             uint8_t* ptr{nullptr};
 
+            int index = 0;
+            auto getHandle = [&]()
+            {
+                return handles.data() + (index++) * handleSize;
+            };
+
             ptr = dataPtr;
-            memcpy(ptr, handles.data() + 0 * handleSize, handleSize); // raygen
+            memcpy(ptr, getHandle(), handleSize);
 
             ptr = dataPtr + sbt.strides[0].size;
-            memcpy(ptr, handles.data() + 1 * handleSize, handleSize); // miss
-
-            ptr = dataPtr + sbt.strides[0].size + sbt.strides[1].stride;
-            memcpy(ptr, handles.data() + 2 * handleSize, handleSize); // shadow
+            for (unsigned i{}; i < missCount; ++i)
+            {
+                memcpy(ptr, getHandle(), handleSize);
+                ptr += sbt.strides[1].stride;
+            }
 
             ptr = dataPtr + sbt.strides[0].size + sbt.strides[1].size;
-            memcpy(ptr, handles.data() + 3 * handleSize, handleSize); // chit
+            for (unsigned i{}; i < hitCount; ++i)
+            {
+                memcpy(ptr, getHandle(), handleSize);
+                ptr += sbt.strides[2].stride;
+            }
         }
         device.unmapMemory(sbt.buffer.memory.get());
 
         return std::move(sbt);
     }
 
+    Application::Texture Application::bufferToImage(const Application::Buffer& buffer, const Application::Sampler& sampler, vk::Extent3D extent, uint32_t mipLevels)
+    {
+        return bufferToImage(this->device.get(), this->physicalDevice, this->commandPool.graphics.get(), this->queue.graphics, buffer, sampler, extent, mipLevels);
+    }
+
+    Application::Texture Application::bufferToImage(
+            vk::Device& device,
+            vk::PhysicalDevice& physicalDevice,
+            vk::CommandPool graphicsCommandPool,
+            vk::Queue graphicsQueue,
+            const Application::Buffer& buffer,
+            const Application::Sampler& sampler,
+            vk::Extent3D extent,
+            uint32_t mipLevels)
+    {
+        Application::Texture texture;
+
+        std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
+
+        texture.image.handle = device.createImageUnique(
+                vk::ImageCreateInfo{}
+                .setImageType(vk::ImageType::e2D)
+                .setFormat(vk::Format::eB8G8R8A8Unorm)
+                .setArrayLayers(1)
+                .setMipLevels(mipLevels)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setTiling(vk::ImageTiling::eOptimal)
+                .setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc
+                    | vk::ImageUsageFlagBits::eStorage)
+                .setSharingMode(vk::SharingMode::eConcurrent)
+                .setQueueFamilyIndices(queueFamilyIndices)
+                .setInitialLayout(vk::ImageLayout::eUndefined)
+                .setExtent(extent)
+                );
+
+        auto memoryRequirements = device.getImageMemoryRequirements(texture.image.handle.get());
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+        texture.image.memory = device.allocateMemoryUnique(
+                vk::MemoryAllocateInfo{}
+                .setAllocationSize(memoryRequirements.size)
+                .setMemoryTypeIndex(Application::getMemoryType(physicalDevice, memoryRequirements, memoryProperty))
+                );
+
+        device.bindImageMemory(texture.image.handle.get(), texture.image.memory.get(), 0);
+
+        auto blittingCmdBuffer = Application::recordCommandBuffer(device, graphicsCommandPool);
+
+        Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+        blittingCmdBuffer.copyBufferToImage(
+                buffer.handle.get(),
+                texture.image.handle.get(),
+                vk::ImageLayout::eTransferDstOptimal,
+                vk::BufferImageCopy{}
+                .setImageSubresource({ vk::ImageAspectFlagBits::eColor, 0, 0, 1 })
+                .setImageExtent(extent)
+                );
+
+        Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+
+        for (uint32_t lvl = 1; lvl < mipLevels; ++lvl)
+        {
+            auto getMipLevelOffset = [extent](uint32_t lvl)
+            {
+                return vk::Offset3D{static_cast<int32_t>(extent.width >> lvl), static_cast<int32_t>(extent.height >> lvl), 1};
+            };
+
+            vk::ImageBlit imageBlit{};
+            imageBlit
+                .setSrcSubresource({ vk::ImageAspectFlagBits::eColor, lvl - 1, 0, 1 })
+                .setDstSubresource({ vk::ImageAspectFlagBits::eColor, lvl,     0, 1 })
+                .setSrcOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl - 1) })
+                .setDstOffsets({ vk::Offset3D{}, getMipLevelOffset(lvl    ) });
+
+            Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                    { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+
+            blittingCmdBuffer.blitImage(texture.image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, texture.image.handle.get(), vk::ImageLayout::eTransferDstOptimal, 1, &imageBlit, vk::Filter::eLinear);
+
+            Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                    { vk::ImageAspectFlagBits::eColor, lvl, 1, 0, 1 });
+        }
+
+        Application::setImageLayout(blittingCmdBuffer, texture.image.handle.get(), vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                { vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 });
+
+        Application::flushCommandBuffer(device, graphicsCommandPool, blittingCmdBuffer, graphicsQueue);
+
+        texture.sampler = device.createSamplerUnique(
+                vk::SamplerCreateInfo{}
+                .setMagFilter(sampler.magFilter)
+                .setMinFilter(sampler.minFilter)
+                .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+                .setAddressModeU(sampler.addressModeU)
+                .setAddressModeV(sampler.addressModeV)
+                .setAddressModeW(sampler.addressModeW)
+                .setCompareOp(vk::CompareOp::eNever)
+                .setBorderColor(vk::BorderColor::eFloatOpaqueWhite)
+                .setMaxAnisotropy(1.0)
+                .setAnisotropyEnable(VK_FALSE)
+                .setMaxLod(static_cast<float>(mipLevels))
+                .setMaxAnisotropy(8.0f)
+                .setAnisotropyEnable(VK_TRUE));
+
+        texture.image.imageView = device.createImageViewUnique(
+                vk::ImageViewCreateInfo{}
+                .setImage(texture.image.handle.get())
+                .setViewType(vk::ImageViewType::e2D)
+                .setFormat(vk::Format::eB8G8R8A8Unorm)
+                .setComponents({ vk::ComponentSwizzle::eB, vk::ComponentSwizzle::eG, vk::ComponentSwizzle::eR, vk::ComponentSwizzle::eA })
+                .setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1 })
+                );
+
+        texture.image.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal; // TODO: change layout on go as member
+
+        texture.descriptor
+            .setSampler(texture.sampler.get())
+            .setImageView(texture.image.imageView.get())
+            .setImageLayout(texture.image.imageLayout);
+
+        return texture;
+    }
 }
 

@@ -25,15 +25,18 @@ void main()
     if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height) return;
 
     const ivec2 xy        = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    const vec3  dir       = toVector(x2phi(xy.x, constants.width), y2theta(xy.y, constants.height));
-    const vec3  color     = 255.0f * imageLoad(environmentMap, xy).xyz;
-    const float normConst = calcNormalizationConst(constants.height, constants.width);
+    const float phi       = x2phi(xy.x, constants.width);
+    const float theta     = y2theta(xy.y, constants.height);
+    const vec3  dir       = toVector(phi, theta);
+    const vec3  color     = imageLoad(environmentMap, xy).xyz;
+    const float pixelArea = (2.0f * PI / constants.width) * (PI / constants.height);
+    const float weight    = pixelArea * sin(theta);
 
     for (int l = 0; l < 4; l++)
     {
         for (int m = -l; m < l + 1; m++)
         {
-            coeffs[l * (l + 1) + m] += normConst * SH(l, m, dir) * color;
+            coeffs[l * (l + 1) + m] += SH(l, m, dir) * color * weight;
         }
     }
 }

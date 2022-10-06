@@ -21,25 +21,6 @@ namespace vlb {
     {
         private:
 
-            struct Sampler
-            {
-                vk::Filter magFilter = vk::Filter::eLinear;
-                vk::Filter minFilter = vk::Filter::eLinear;
-                vk::SamplerAddressMode addressModeU = vk::SamplerAddressMode::eRepeat;
-                vk::SamplerAddressMode addressModeV = vk::SamplerAddressMode::eRepeat;
-                vk::SamplerAddressMode addressModeW = vk::SamplerAddressMode::eRepeat;
-            };
-
-            struct Texture_t;
-            typedef std::shared_ptr<Texture_t> Texture;
-            struct Texture_t
-            {
-                Application::Image      image;
-                uint32_t                mipLevels;
-                vk::DescriptorImageInfo descriptor;
-                vk::UniqueSampler       sampler;
-            };
-
             struct AccelerationStructure_t;
             typedef std::shared_ptr<AccelerationStructure_t> AccelerationStructure;
             struct AccelerationStructure_t
@@ -130,6 +111,7 @@ namespace vlb {
             Scene buildAccelerationStructures();
             Scene createDescriptorSetLayout();
             Scene loadCameras();
+            Scene loadBakedLight();
 
             std::array<glm::vec3, 2> getBounds();
 
@@ -145,13 +127,16 @@ namespace vlb {
             vk::DescriptorSetLayout getDescriptorSetLayout();
             Scene                   updateSceneDescriptorSets(vk::DescriptorSet targetDS);
 
+            // Lighting
+            glm::vec3 getGridStep();
+            unsigned  getLmax();
 
             // TODO MAKE PRIVATE
             AccelerationStructure tlas;
             Application::Buffer   instanceInfoBuffer;
             Application::Buffer   materialBuffer;
             size_t materialsCount;
-            std::vector<Texture>  textures;
+            std::vector<Application::Texture>  textures;
 
         private:
 
@@ -177,7 +162,7 @@ namespace vlb {
 
             vk::UniqueDescriptorSetLayout descriptorSetLayout;
 
-            std::vector<Sampler>  samplers;
+            std::vector<Application::Sampler>  samplers;
             std::vector<Node>     nodes;
             std::vector<Node>     linearNodes;
             std::vector<Camera>   cameras;
@@ -185,6 +170,13 @@ namespace vlb {
             std::array<glm::vec3, 2> bounds{};
 
             int cameraIndex;
+
+            struct BakedLight
+            {
+                glm::vec3           gridStep;
+                unsigned            lmax;
+                Application::Buffer coeffs;
+            } bakedLight;
 
             void loadNode(const Node parent, const tinygltf::Node& node, const uint32_t nodeIndex);
             glm::mat4 loadMatrix(const tinygltf::Node& gltfNode);

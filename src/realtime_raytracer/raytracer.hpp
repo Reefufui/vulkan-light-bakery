@@ -35,6 +35,13 @@ namespace vlb {
                 vk::UniqueDescriptorSet resultImage;
             };
 
+            struct Constants
+            {
+                glm::vec3               gridStep;
+                unsigned                lmax;
+                UI::InteractiveLighting lighting;
+            } constants;
+
             vk::UniqueDescriptorPool descriptorPool;
             DS descriptorSet;
             DSLayout descriptorSetLayout;

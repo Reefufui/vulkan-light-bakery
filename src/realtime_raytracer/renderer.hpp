@@ -5,6 +5,7 @@
 
 #include "application.hpp"
 #include "scene_manager.hpp"
+#include "skybox_manager.hpp"
 #include "ui.hpp"
 
 namespace vlb {
@@ -33,6 +34,7 @@ namespace vlb {
             const int maxFramesInFlight = 2;
             void initUI();
             void initSceneManager();
+            void initSkyboxManager();
 
         protected:
             vk::Format           surfaceFormat{vk::Format::eB8G8R8A8Unorm};
@@ -53,6 +55,7 @@ namespace vlb {
             size_t currentFrame = 0;
 
             SceneManager sceneManager;
+            SkyboxManager skyboxManager;
             UI ui;
 
         public:

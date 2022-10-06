@@ -17,37 +17,27 @@ layout(push_constant) uniform PushConstants
     int height;
 } constants;
 
-layout (set = 0, binding = 0, rgba8)  uniform image2D environmentMap;
+layout (set = 0, binding = 0) uniform sampler2D skybox;
 layout (set = 0, binding = 1, scalar) buffer buff { vec3 coeffs[16]; };
-
-vec3 val2color(float val)
-{
-    if (val > 0.0f)
-    {
-        return vec3(val, 0.0f, 0.0f);
-    }
-    else
-    {
-        return vec3(0.0f, 0.0f, -val);
-    }
-}
 
 void main()
 {
     if (gl_GlobalInvocationID.x >= constants.width || gl_GlobalInvocationID.y >= constants.height) return;
 
-    const ivec2 xy    = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    const vec3  dir   = toVector(x2phi(xy.x, constants.width), y2theta(xy.y, constants.height));
-    vec3        color = vec3(0.f);
+    const ivec2 xy        = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    const float phi       = x2phi(xy.x, constants.width) - PI / 2.0f;
+    const float theta     = y2theta(xy.y, constants.height);
+    const vec3  dir       = toVector(phi, theta);
+    const vec3  color     = texelFetch(skybox, xy, 0).xyz;
+    const float pixelArea = (2.0f * PI / constants.width) * (PI / constants.height);
+    const float weight    = pixelArea * sin(theta);
 
     for (int l = 0; l < 4; l++)
     {
         for (int m = -l; m < l + 1; m++)
         {
-            color += coeffs[l * (l + 1) + m] * SH(l, m, dir);
+            coeffs[l * (l + 1) + m] += SH(l, m, dir.xzy) * color * weight;
         }
     }
-
-    imageStore(environmentMap, xy, vec4(1250.0f * color, 1.f));
 }
 

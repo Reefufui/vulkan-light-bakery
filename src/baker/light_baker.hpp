@@ -3,6 +3,8 @@
 #ifndef LIGHT_BAKER_HPP
 #define LIGHT_BAKER_HPP
 
+#include <memory>
+
 #include "scene_manager.hpp"
 #include "application.hpp"
 #include "env_map_generator.hpp"
@@ -22,9 +24,14 @@ namespace vlb {
 
             EnvMapGenerator envMapGenerator;
 
+            std::string            gltfFileName;
+            bool                   imageInput;
             std::vector<glm::vec3> probePositions;
             glm::vec3              probesCount3D;
+            glm::vec3              gridStep;
             Application::Buffer    SHCoeffs;
+
+            std::vector<uint8_t> coeffs;
 
             vk::UniqueDescriptorPool      descriptorPool;
             vk::UniqueDescriptorSet       descriptorSet;
@@ -43,6 +50,7 @@ namespace vlb {
             void modifyPipelineForDebug();
             void dispatchBakingKernel();
             void bake();
+            void serialize();
     };
 }
 

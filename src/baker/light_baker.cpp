@@ -1,57 +1,73 @@
 // created in 2022 by Andrey Treefonov https://github.com/Reefufui
 
 #include "light_baker.hpp"
+#include "tqdm/tqdm.h"
 
+#include <fstream>
 #include <glm/gtx/string_cast.hpp> // Debug
+#include <nlohmann/json.hpp>
+
+namespace glm
+{
+    void to_json(nlohmann::json& j, const vec3& vec)
+    {
+        j = nlohmann::json{{"x", vec.x}, {"y", vec.y}, {"z", vec.z}};
+    }
+}
 
 namespace vlb {
 
     LightBaker::LightBaker(std::string& assetName)
     {
+        auto vulkanContext = EnvMapGenerator::VulkanResources
+        {
+            this->physicalDevice,
+                this->device.get(),
+                this->queue.transfer,
+                this->commandPool.transfer.get(),
+                this->queue.graphics,
+                this->commandPool.graphics.get(),
+        };
+
+        this->envMapGenerator.passVulkanResources(vulkanContext);
+
         if (assetName.find(".gltf") != std::string::npos || assetName.find(".glb") != std::string::npos)
         {
-            auto res = Scene_t::VulkanResources
-            {
-                this->physicalDevice,
-                    this->device.get(),
-                    this->queue.transfer,
-                    this->commandPool.transfer.get(),
-                    this->queue.graphics,
-                    this->commandPool.graphics.get(),
-                    this->queue.compute,
-                    this->commandPool.compute.get(),
-                    static_cast<uint32_t>(1)
-            };
-            auto res2 = EnvMapGenerator::VulkanResources
-            {
-                this->physicalDevice,
-                    this->device.get(),
-                    this->queue.transfer,
-                    this->commandPool.transfer.get(),
-                    this->queue.graphics,
-                    this->commandPool.graphics.get(),
-            };
-            this->envMapGenerator.passVulkanResources(res2);
+            this->gltfFileName  = assetName;
+            this->imageInput    = false;
+            this->probesCount3D = glm::vec3(7, 7, 7); // TODO set this somewhere else
 
             {
+                auto sceneManagerVulkanContext = Scene_t::VulkanResources
+                {
+                    this->physicalDevice,
+                        this->device.get(),
+                        this->queue.transfer,
+                        this->commandPool.transfer.get(),
+                        this->queue.graphics,
+                        this->commandPool.graphics.get(),
+                        this->queue.compute,
+                        this->commandPool.compute.get(),
+                        static_cast<uint32_t>(1)
+                };
+
                 SceneManager sceneManager{};
-                sceneManager.passVulkanResources(res);
+                sceneManager.passVulkanResources(sceneManagerVulkanContext);
                 sceneManager.pushScene(assetName);
                 sceneManager.setSceneIndex(0);
                 auto scene = sceneManager.getScene();
-                this->envMapGenerator.setScene(std::move(scene));
                 this->probePositions = probePositionsFromBoudingBox(scene->getBounds());
+                this->envMapGenerator.setScene(std::move(scene));
             }
 
             this->envMapGenerator.setupVukanRaytracing();
 
-            this->envMapGenerator.setEnvShpereRadius(100u);
+            this->envMapGenerator.setEnvShpereRadius(500u);
             this->envMapGenerator.createImage();
-
-            this->probesCount3D = glm::vec3(5, 5, 5);
         }
         else
         {
+            this->imageInput = true;
             this->probePositions.push_back(glm::vec3(0.0f));
             this->envMapGenerator.createImage(assetName.c_str());
         }
@@ -66,7 +82,7 @@ namespace vlb {
         std::vector<glm::vec3> positions(0);
         positions.push_back(bounds[0]);
 
-        const glm::vec3 step = (bounds[1] - bounds[0]) / (probesCount3D - 1.f);
+        this->gridStep = (bounds[1] - bounds[0]) / (probesCount3D - 1.f);
 
         for (int dim = 0; dim < 3; ++dim)
         {
@@ -75,7 +91,7 @@ namespace vlb {
             {
                 for (int i = 0; i < this->probesCount3D[dim] - 1; ++i)
                 {
-                    position[dim] += step[dim];
+                    position[dim] += gridStep[dim];
                     positions.push_back(position);
                 }
             }
@@ -272,19 +288,117 @@ namespace vlb {
     {
         createBakingPipeline();
 
-        int counter = 0;
-        for (glm::vec3 pos : this->probePositions)
+        tqdm bar;
+        bar.set_theme_circle();
+
+        unsigned lmax = 16u;
+        this->coeffs = std::vector<uint8_t>(this->probePositions.size() * lmax * sizeof(glm::vec3));
+        void* ptr = static_cast<void*>(this->coeffs.data());
+
+        for (int i = 0; i < this->probePositions.size(); ++i)
         {
-            std::cout << glm::to_string(pos) << "\n";
+            auto& pos = this->probePositions[i];
+
             this->envMapGenerator.getMap(pos);
+
             dispatchBakingKernel();
-            void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, 16 * 3 * sizeof(float));
-            float* coeffs = static_cast<float*>(dataPtr);
+
+            std::string name = std::to_string(i) + ".png";
+            this->envMapGenerator.saveImage(name);
+
+            /*
+            modifyPipelineForDebug();
+            dispatchBakingKernel();
+
+            name = "output.png";
+            this->envMapGenerator.saveImage(name);
+            */
+
+            void* dataPtr = this->device.get().mapMemory(SHCoeffs.memory.get(), 0, lmax * sizeof(glm::vec3));
+            {
+                memcpy(ptr, dataPtr, lmax * sizeof(glm::vec3));
+                ptr += lmax * sizeof(glm::vec3);
+            }
             device.get().unmapMemory(SHCoeffs.memory.get());
 
-            std::string name = std::to_string(counter++) + ".png";
-            this->envMapGenerator.saveImage(name);
+            bar.progress(i, this->probePositions.size());
         }
+
+        bar.finish();
     }
+
+    std::string base64_encode(uint8_t const *bytes_to_encode, unsigned int in_len)
+    {
+        std::string ret;
+        int i = 0;
+        int j = 0;
+        uint8_t char_array_3[3];
+        uint8_t char_array_4[4];
+
+        const char* base64_chars =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz"
+            "0123456789+/";
+
+        while (in_len--) {
+            char_array_3[i++] = *(bytes_to_encode++);
+            if (i == 3) {
+                char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+                char_array_4[1] =
+                    ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+                char_array_4[2] =
+                    ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+                char_array_4[3] = char_array_3[2] & 0x3f;
+
+                for (i = 0; (i < 4); i++) ret += base64_chars[char_array_4[i]];
+                i = 0;
+            }
+        }
+
+        if (i) {
+            for (j = i; j < 3; j++) char_array_3[j] = '\0';
+
+            char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+            char_array_4[1] =
+                ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+            char_array_4[2] =
+                ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+
+            for (j = 0; (j < i + 1); j++) ret += base64_chars[char_array_4[j]];
+
+            while ((i++ < 3)) ret += '=';
+        }
+
+        return ret;
+    }
+
+    void LightBaker::serialize()
+    {
+        std::ifstream i(this->gltfFileName);
+        nlohmann::json json{};
+        i >> json;
+
+        std::string header = "data:application/octet-stream;base64,";
+        std::string encodedData = base64_encode(this->coeffs.data(), static_cast<unsigned>(this->coeffs.size()));
+
+        nlohmann::json buffer{};
+        buffer["byteLength"] = this->coeffs.size();
+        buffer["uri"] = header + encodedData;
+        json["buffers"].push_back(buffer);
+
+        nlohmann::json bufferView{};
+        bufferView["buffer"] = json["buffers"].size() - 1;
+        bufferView["byteLength"] = this->coeffs.size();
+        bufferView["byteOffset"] = 0;
+        json["bufferViews"].push_back(bufferView);
+
+        json["light"]["gridStep"] = this->gridStep;
+        json["light"]["lmax"] = 16u;
+        json["light"]["bufferView"] = json["bufferViews"].size() - 1;
+
+        std::ofstream o("baked_" + this->gltfFileName);
+        o << std::setw(4) << json << std::endl;
+    }
+
 }
 

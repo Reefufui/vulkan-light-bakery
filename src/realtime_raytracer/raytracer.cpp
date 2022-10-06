@@ -3,8 +3,6 @@
 #include "raytracer.hpp"
 #include "structures.h"
 
-#include <limits>
-
 namespace vlb {
 
     void Raytracer::createResultImageDSLayout()
@@ -28,10 +26,16 @@ namespace vlb {
         layouts.push_back(this->sceneManager.getScene()->getDescriptorSetLayout());
         layouts.push_back(this->descriptorSetLayout.resultImage.get());
         layouts.push_back(this->sceneManager.getCamera()->getDescriptorSetLayout());
+        layouts.push_back(this->skyboxManager.getDescriptorSetLayout());
+
+        const std::vector<vk::PushConstantRange> constants{
+            { vk::ShaderStageFlagBits::eClosestHitKHR, 0, sizeof(Raytracer::Constants) }
+        };
 
         this->pipelineLayout = this->device.get().createPipelineLayoutUnique(
                 vk::PipelineLayoutCreateInfo{}
                 .setSetLayouts(layouts)
+                .setPushConstantRanges(constants)
                 );
 
         enum StageIndices
@@ -39,6 +43,8 @@ namespace vlb {
             eRaygen,
             eMiss,
             eShadow,
+            eSH,
+            eSkyboxSH,
             eClosestHit,
             eShaderGroupCount
         };
@@ -54,7 +60,7 @@ namespace vlb {
             .setAnyHitShader(VK_SHADER_UNUSED_KHR)
             .setIntersectionShader(VK_SHADER_UNUSED_KHR);
 
-        shaderModules.push_back(Application::createShaderModule("shaders/basic.rgen.spv"));
+        shaderModules.push_back(Application::createShaderModule("shaders/main.rgen.spv"));
         shaderStages[StageIndices::eRaygen] = vk::PipelineShaderStageCreateInfo{};
         shaderStages[StageIndices::eRaygen]
             .setStage(vk::ShaderStageFlagBits::eRaygenKHR)
@@ -62,7 +68,7 @@ namespace vlb {
             .setPName("main");
         shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eRaygen));
 
-        shaderModules.push_back(Application::createShaderModule("shaders/basic.rmiss.spv"));
+        shaderModules.push_back(Application::createShaderModule("shaders/main.rmiss.spv"));
         shaderStages[StageIndices::eMiss] = vk::PipelineShaderStageCreateInfo{};
         shaderStages[StageIndices::eMiss]
             .setStage(vk::ShaderStageFlagBits::eMissKHR)
@@ -78,7 +84,23 @@ namespace vlb {
             .setPName("main");
         shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eShadow));
 
-        shaderModules.push_back(Application::createShaderModule("shaders/basic.rchit.spv"));
+        shaderModules.push_back(Application::createShaderModule("shaders/sh.rmiss.spv"));
+        shaderStages[StageIndices::eSH] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eSH]
+            .setStage(vk::ShaderStageFlagBits::eMissKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eSH));
+
+        shaderModules.push_back(Application::createShaderModule("shaders/skybox_sh.rmiss.spv"));
+        shaderStages[StageIndices::eSkyboxSH] = vk::PipelineShaderStageCreateInfo{};
+        shaderStages[StageIndices::eSkyboxSH]
+            .setStage(vk::ShaderStageFlagBits::eMissKHR)
+            .setModule(shaderModules.back().get())
+            .setPName("main");
+        shaderGroups.push_back(groupTemplate.setGeneralShader(StageIndices::eSkyboxSH));
+
+        shaderModules.push_back(Application::createShaderModule("shaders/main.rchit.spv"));
         shaderStages[StageIndices::eClosestHit] = vk::PipelineShaderStageCreateInfo{};
         shaderStages[StageIndices::eClosestHit]
             .setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
@@ -129,6 +151,7 @@ namespace vlb {
 
     void Raytracer::createDescriptorSets()
     {
+        // TODO: move scene related to SceneManager
         std::vector<vk::DescriptorPoolSize> poolSizes = {
             {vk::DescriptorType::eAccelerationStructureKHR, 1},
             {vk::DescriptorType::eStorageImage, 1},
@@ -140,12 +163,15 @@ namespace vlb {
         this->descriptorPool = this->device.get().createDescriptorPoolUnique(
                 vk::DescriptorPoolCreateInfo{}
                 .setPoolSizes(poolSizes)
-                .setMaxSets(2)
+                .setMaxSets(4)
                 .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet
                     | vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind)
                 );
 
-        auto sceneLayout = this->sceneManager.getScene()->getDescriptorSetLayout();
+        auto& scene = this->sceneManager.getScene();
+        this->constants.gridStep = scene->getGridStep();
+        this->constants.lmax     = scene->getLmax();
+        auto sceneLayout = scene->getDescriptorSetLayout();
         this->descriptorSet.scene = std::move(this->device.get().allocateDescriptorSetsUnique(
                     vk::DescriptorSetAllocateInfo{}
                     .setDescriptorPool(this->descriptorPool.get())
@@ -158,13 +184,13 @@ namespace vlb {
                     .setSetLayouts(descriptorSetLayout.resultImage.get())
                     ).front());
 
-        this->sceneManager.getScene()->updateSceneDescriptorSets(this->descriptorSet.scene.get());
+        scene->updateSceneDescriptorSets(this->descriptorSet.scene.get());
         updateResultImageDescriptorSets();
     }
 
     void Raytracer::recordDrawCommandBuffer(uint64_t imageIndex)
     {
-        if (this->sceneManager.sceneChanged())
+        if (this->sceneManager.sceneChanged() || this->skyboxManager.skyboxChanged())
         {
             handleSceneChange();
         }
@@ -181,6 +207,7 @@ namespace vlb {
         descriptorSets.push_back(this->descriptorSet.scene.get());
         descriptorSets.push_back(this->descriptorSet.resultImage.get());
         descriptorSets.push_back(this->sceneManager.getCamera()->update()->getDescriptorSet(imageIndex));
+        descriptorSets.push_back(this->skyboxManager.getDescriptorSet());
 
         commandBuffer->bindDescriptorSets(
                 vk::PipelineBindPoint::eRayTracingKHR,
@@ -188,6 +215,14 @@ namespace vlb {
                 0,
                 descriptorSets,
                 nullptr
+                );
+
+        this->constants.lighting = this->ui.getLighing();
+
+        commandBuffer->pushConstants(
+                this->pipelineLayout.get(),
+                vk::ShaderStageFlagBits::eClosestHitKHR,
+                0, sizeof(Raytracer::Constants), &this->constants
                 );
 
         auto[width, height, depth] = this->surfaceExtent;
@@ -278,7 +313,7 @@ namespace vlb {
 
     void Raytracer::createShaderBindingTable()
     {
-        this->sbt = Application::createShaderBindingTable(this->pipeline.get());
+        this->sbt = Application::createShaderBindingTable(this->pipeline.get(), 4u, 1u);
     }
 
     void Raytracer::handleSceneChange()

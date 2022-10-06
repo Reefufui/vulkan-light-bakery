@@ -5,6 +5,7 @@
 
 #include "application.hpp"
 #include "scene_manager.hpp"
+#include "skybox_manager.hpp"
 #include "camera.hpp"
 
 #include <imgui.h>
@@ -25,7 +26,8 @@ namespace vlb {
             vk::UniqueDescriptorPool imguiPool;
             Application::Image depthBuffer;
             vk::UniqueRenderPass imguiPass;
-            ImGui::FileBrowser fileDialog;
+            ImGui::FileBrowser sceneFileDialog;
+            ImGui::FileBrowser skyboxFileDialog;
             std::vector<vk::UniqueFramebuffer> imguiFrameBuffers;
 
             GLFWwindow*   window;
@@ -39,14 +41,29 @@ namespace vlb {
             vk::Format depthFormat;
 
             vlb::SceneManager* pSceneManager;
+            vlb::SkyboxManager* pSkyboxManager;
             void sceneManager();
+            void skyboxManager();
             void camera();
-
-            float lightIntensity = 1.0f;
+            void tweakLighting();
 
         public:
+            struct InteractiveLighting
+            {
+                glm::vec3 lightPosition = glm::vec3(1.0f, 10.0f, 1.0f);
+                float shadowBias = 0.005f;
+                float ambientLight = 0.01f;
+                float Cdiffuse = 0.5f;
+                float Cspecular = 0.5f;
+                float Cglossyness = 16.0f;
+            };
+            InteractiveLighting& getLighing();
 
-            float& getLightIntensity();
+        private:
+
+            InteractiveLighting lighting;
+
+        public:
 
             struct InterfaceInitInfo
             {
@@ -61,6 +78,7 @@ namespace vlb {
                 vk::Format depthFormat;
 
                 vlb::SceneManager* pSceneManager;
+                vlb::SkyboxManager* pSkyboxManager;
             };
 
             void init(InterfaceInitInfo& info, vk::CommandBuffer& commandBuffer);
