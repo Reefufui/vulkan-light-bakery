@@ -14,10 +14,19 @@ else()
     message("Building in release mode")
 endif()
 
-set(CONAN_SYSTEM_INCLUDES ON)
+find_package(Vulkan REQUIRED)
+find_package(glfw3 REQUIRED)
+find_package(glm REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(imgui REQUIRED)
+include_directories(/usr/include/tinygltf REQUIRED)
 
-include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(NO_OUTPUT_DIRS)
+set(VENDOR_LIBS 
+    ${Vulkan_LIBRARIES}
+    ${glm_LIBRARIES}
+    glfw
+    imgui
+    ${nlohmann_json_LIBRARIES})
 
 include_directories(src src/vendor src/vendor/tqdm/include src/baker shaders)
 
@@ -46,8 +55,8 @@ add_executable(baker
     src/baker/light_baker.cpp
     )
 
-target_link_libraries(rtrt ${CONAN_LIBS} -ldl core)
-target_link_libraries(baker ${CONAN_LIBS} -ldl core)
+target_link_libraries(rtrt ${VENDOR_LIBS} -ldl core)
+target_link_libraries(baker ${VENDOR_LIBS} -ldl core)
 
 ##################
 ## ASSETS ########

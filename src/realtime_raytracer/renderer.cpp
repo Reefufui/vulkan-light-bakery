@@ -65,7 +65,7 @@ namespace vlb {
             .setImageSharingMode(vk::SharingMode::eExclusive)
             .setQueueFamilyIndices(nullptr)
             .setPreTransform(capabilities.currentTransform)
-            .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
+            .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eInherit)
             .setPresentMode(vk::PresentModeKHR::eFifo)
             .setClipped(VK_TRUE)
             .setOldSwapchain(nullptr);
