@@ -160,7 +160,10 @@ namespace vlb {
                     vk::Format imageFormat,
                     vk::Extent3D imageExtent,
                     vk::CommandPool transferPool,
-                    vk::Queue transferQueue);
+                    vk::Queue transferQueue,
+                    vk::ImageUsageFlags usage = vk::ImageUsageFlags{},
+                    vk::ImageLayout layout = vk::ImageLayout::eGeneral,
+                    vk::ImageAspectFlags acpect = vk::ImageAspectFlagBits::eColor);
 
             static vk::UniqueShaderModule createShaderModule(
                     vk::Device& device,

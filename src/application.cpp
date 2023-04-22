@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <limits>
+#include <vulkan/vulkan_enums.hpp>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -435,10 +436,22 @@ namespace vlb {
         return createImage(this->device.get(), this->physicalDevice, imageFormat, imageExtent, this->commandPool.transfer.get(), this->queue.transfer);
     }
 
-    Application::Image Application::createImage(vk::Device& device, vk::PhysicalDevice& physicalDevice, vk::Format imageFormat, vk::Extent3D imageExtent,
-            vk::CommandPool transferPool, vk::Queue transferQueue)
+    Application::Image Application::createImage(vk::Device& device,
+            vk::PhysicalDevice& physicalDevice,
+            vk::Format imageFormat,
+            vk::Extent3D imageExtent,
+            vk::CommandPool transferPool,
+            vk::Queue transferQueue,
+            vk::ImageUsageFlags usage,
+            vk::ImageLayout layout,
+            vk::ImageAspectFlags aspect
+            )
     {
         std::array<uint32_t, 3> queueFamilyIndices = {0, 1, 2}; // TODO: this might fail but ok for now
+        vk::ImageUsageFlags defaultUsage = vk::ImageUsageFlagBits::eTransferSrc
+            | vk::ImageUsageFlagBits::eTransferDst
+            | vk::ImageUsageFlagBits::eStorage;
+
         Image image{};
         image.handle = device.createImageUnique(
                 vk::ImageCreateInfo{}
@@ -449,7 +462,7 @@ namespace vlb {
                 .setArrayLayers(1)
                 .setSamples(vk::SampleCountFlagBits::e1)
                 .setTiling(vk::ImageTiling::eOptimal)
-                .setUsage(vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eStorage)
+                .setUsage((usage == vk::ImageUsageFlags{}) ? defaultUsage : usage)
                 .setInitialLayout(vk::ImageLayout::eUndefined)
                 .setSharingMode(vk::SharingMode::eConcurrent)
                 .setQueueFamilyIndices(queueFamilyIndices)
@@ -471,7 +484,7 @@ namespace vlb {
                 .setFormat(imageFormat)
                 .setSubresourceRange(
                     vk::ImageSubresourceRange{}
-                    .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                    .setAspectMask(aspect)
                     .setBaseMipLevel(0)
                     .setLevelCount(1)
                     .setBaseArrayLayer(0)
@@ -481,8 +494,8 @@ namespace vlb {
                 );
 
         vk::CommandBuffer cmd = recordCommandBuffer(device, transferPool);
-        setImageLayout(cmd, image.handle.get(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
-                { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
+        setImageLayout(cmd, image.handle.get(), vk::ImageLayout::eUndefined, layout,
+                { aspect, 0, 1, 0, 1 });
         flushCommandBuffer(device, transferPool, cmd, transferQueue);
 
         return image;

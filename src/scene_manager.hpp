@@ -11,6 +11,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "application.hpp"
+#include "structures.h"
 #include "camera.hpp"
 
 namespace vlb {
@@ -34,12 +35,12 @@ namespace vlb {
             typedef std::shared_ptr<Primitive_t> Primitive;
             struct Primitive_t
             {
-                AccelerationStructure blas;
-                uint64_t              materialIndex;
-                uint32_t              indexCount;
-                uint32_t              vertexCount;
-                Application::Buffer   vertexBuffer;
-                Application::Buffer   indexBuffer;
+                AccelerationStructure       blas;
+                uint64_t                    materialIndex;
+                std::vector<uint32_t>       indices;
+                std::vector<shader::Vertex> vertices;
+                Application::Buffer         vertexBuffer;
+                Application::Buffer         indexBuffer;
 
                 auto getGeometry();
             };
@@ -110,10 +111,14 @@ namespace vlb {
             Scene loadNodes();
             Scene buildAccelerationStructures();
             Scene createDescriptorSetLayout();
+            Scene createVertexBuffer();
+            Scene createIndexBuffer();
             Scene loadCameras();
             Scene loadBakedLight();
 
             std::array<glm::vec3, 2> getBounds();
+
+            // rework interface 
 
             // Camera management
             Scene setCameraIndex(int cameraIndex);
@@ -126,6 +131,13 @@ namespace vlb {
             // Descriptors
             vk::DescriptorSetLayout getDescriptorSetLayout();
             Scene                   updateSceneDescriptorSets(vk::DescriptorSet targetDS);
+
+            // Buffers
+            vk::Buffer getVertexBuffer();
+            vk::Buffer getIndexBuffer();
+
+            // Info
+            size_t getTotalIndicesCount();
 
             // Lighting
             glm::vec3 getGridStep();
@@ -167,6 +179,11 @@ namespace vlb {
             std::vector<Node>     linearNodes;
             std::vector<Camera>   cameras;
 
+            Application::Buffer   indexBuffer;
+            Application::Buffer   vertexBuffer;
+
+            size_t indicesCount = 0;
+
             std::array<glm::vec3, 2> bounds{};
 
             int cameraIndex;
@@ -183,7 +200,7 @@ namespace vlb {
             auto fetchVertices(const tinygltf::Primitive& primitive);
             auto fetchIndices(const tinygltf::Primitive& primitive);
             auto loadVertexAttribute(const tinygltf::Primitive& primitive, std::string&& label);
-            template <class T> Application::Buffer toBuffer(T data, size_t size = -1);
+            template <class T> Application::Buffer toBuffer(T data, vk::BufferUsageFlags usage = vk::BufferUsageFlags{});
             AccelerationStructure buildAS(const vk::AccelerationStructureGeometryKHR& geometry, const vk::AccelerationStructureBuildRangeInfoKHR& range);
     };
 

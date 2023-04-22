@@ -1,7 +1,6 @@
 // created in 2021 by Andrey Treefonov https://github.com/Reefufui
 
 #include "scene_manager.hpp"
-#include "structures.h"
 
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/matrix_double4x4.hpp>
@@ -16,6 +15,7 @@
 #include <utility>
 #include <array>
 #include <limits>
+#include <vulkan/vulkan_enums.hpp>
 
 namespace glm
 {
@@ -120,9 +120,103 @@ namespace vlb {
         return shared_from_this();
     }
 
+    Scene Scene_t::createIndexBuffer()
+    {
+        std::vector<uint32_t> indicesLinear;
+        size_t totalIndices = 0;
+
+        for (const auto& node : linearNodes)
+        {
+            const auto& mesh = node->mesh;
+            if (mesh)
+            {
+                for (const auto& primitive : mesh->primitives)
+                {
+                    totalIndices += primitive->indices.size();
+                }
+            }
+        }
+
+        indicesLinear.reserve(totalIndices);
+        this->indicesCount = totalIndices;
+        std::cout << totalIndices << "\n";
+
+        for (const auto& node : linearNodes)
+        {
+            const auto& mesh = node->mesh;
+            if (mesh)
+            {
+                for (const auto& primitive : mesh->primitives)
+                {
+                    const auto& indices = primitive->indices;
+                    indicesLinear.insert(indicesLinear.end(), indices.begin(), indices.end());
+                }
+            }
+        }
+
+        vk::BufferUsageFlags usage{ vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer };
+        this->indexBuffer = toBuffer(std::move(indicesLinear), usage);
+
+        return shared_from_this();
+    }
+
+    Scene Scene_t::createVertexBuffer()
+    {
+        std::vector<shader::Vertex> verticesLinear;
+        size_t totalVertices = 0;
+
+        for (const auto& node : linearNodes)
+        {
+            const auto& mesh = node->mesh;
+            if (mesh)
+            {
+                for (const auto& primitive : mesh->primitives)
+                {
+                    totalVertices += primitive->vertices.size();
+                }
+            }
+        }
+
+        verticesLinear.reserve(totalVertices);
+
+        for (const auto& node : linearNodes)
+        {
+            const auto& mesh = node->mesh;
+            if (mesh)
+            {
+                for (const auto& primitive : mesh->primitives)
+                {
+                    // TODO: matrices
+                    const auto& vertices = primitive->vertices;
+                    verticesLinear.insert(verticesLinear.end(), vertices.begin(), vertices.end());
+                }
+            }
+        }
+
+        vk::BufferUsageFlags usage{ vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer };
+        this->vertexBuffer = toBuffer(std::move(verticesLinear), usage);
+
+        return shared_from_this();
+    }
+
     vk::DescriptorSetLayout Scene_t::getDescriptorSetLayout()
     {
         return this->descriptorSetLayout.get();
+    }
+
+    vk::Buffer Scene_t::getVertexBuffer()
+    {
+        return this->vertexBuffer.handle.get();
+    }
+
+    vk::Buffer Scene_t::getIndexBuffer()
+    {
+        return this->indexBuffer.handle.get();
+    }
+
+    size_t Scene_t::getTotalIndicesCount()
+    {
+        return this->indicesCount;
     }
 
     glm::vec3 Scene_t::getGridStep()
@@ -222,7 +316,7 @@ namespace vlb {
         data
             .setVertexFormat(vk::Format::eR32G32B32Sfloat)
             .setVertexStride(sizeof(shader::Vertex))
-            .setMaxVertex(this->vertexCount)
+            .setMaxVertex(this->vertices.size())
             .setIndexType(vk::IndexType::eUint32)
             .setVertexData(this->vertexBuffer.deviceAddress)
             .setIndexData(this->indexBuffer.deviceAddress);
@@ -233,7 +327,7 @@ namespace vlb {
             .setGeometry({data});
 
         vk::AccelerationStructureBuildRangeInfoKHR range{};
-        range.setPrimitiveCount(static_cast<uint32_t>(this->indexCount) / 3);
+        range.setPrimitiveCount(static_cast<uint32_t>(this->indices.size()) / 3);
 
         return std::make_pair(geometry, range);
     }
@@ -508,8 +602,8 @@ namespace vlb {
 
                 Primitive primitive{new Primitive_t()};
                 primitive->materialIndex = gltfPrimitive.material > -1 ? gltfPrimitive.material : this->materialsCount - 1;
-                primitive->vertexCount   = vertices.size();
-                primitive->indexCount    = indices.size();
+                primitive->vertices      = vertices;
+                primitive->indices       = indices;
                 primitive->vertexBuffer  = toBuffer(std::move(vertices));
                 primitive->indexBuffer   = toBuffer(std::move(indices));
 
@@ -911,9 +1005,9 @@ namespace vlb {
     }
 
     template <class T>
-        Application::Buffer Scene_t::toBuffer(T data, size_t size)
+        Application::Buffer Scene_t::toBuffer(T data, vk::BufferUsageFlags usage)
         {
-            size = size == -1 ? data.size() * sizeof(data.front()) : size;
+            const auto& size = data.size() * sizeof(data.front());
 
             using enum vk::BufferUsageFlagBits;
             using enum vk::MemoryPropertyFlagBits;
@@ -924,7 +1018,9 @@ namespace vlb {
             mem = eHostVisible | eHostCoherent;
             Application::Buffer staging = Application::createBuffer(this->device, this->physicalDevice, size, usg, mem, data.data());
 
-            usg = eTransferDst | eAccelerationStructureBuildInputReadOnlyKHR | eShaderDeviceAddress | eStorageBuffer;
+            usg = (usage == vk::BufferUsageFlags{})
+                ? eTransferDst | eAccelerationStructureBuildInputReadOnlyKHR | eShaderDeviceAddress | eStorageBuffer
+                : usage;
             mem = eDeviceLocal;
             Application::Buffer buffer = Application::createBuffer(this->device, this->physicalDevice, size, usg, mem);
 
@@ -982,7 +1078,9 @@ namespace vlb {
         scene->loadMaterials();
         scene->loadNodes();
         scene->loadBakedLight();
-        scene->buildAccelerationStructures();
+        //scene->buildAccelerationStructures();
+        scene->createVertexBuffer();
+        scene->createIndexBuffer();
         scene->createDescriptorSetLayout();
 
         // Instead of calling loadCameras() to fetch cameras from glTF file we load cameras from ci.
@@ -1019,8 +1117,10 @@ namespace vlb {
         scene->loadTextures();
         scene->loadMaterials();
         scene->loadNodes();
-        scene->buildAccelerationStructures();
+        //scene->buildAccelerationStructures();
         scene->createDescriptorSetLayout();
+        scene->createVertexBuffer();
+        scene->createIndexBuffer();
         scene->loadCameras();
         scene->loadBakedLight();
         scene->setCameraIndex(0);

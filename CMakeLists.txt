@@ -55,8 +55,20 @@ add_executable(baker
     src/baker/light_baker.cpp
     )
 
+add_executable(bvh_observer
+    src/bvh_observer/main.cpp
+    src/bvh_observer/renderer.cpp
+    src/bvh_observer/bvh_observer.cpp
+
+    src/bvh_observer/ui.cpp
+    src/vendor/imgui_impl_glfw.cpp
+    src/vendor/imgui_impl_vulkan.cpp
+    src/vendor/imgui_stdlib.cpp
+    )
+
 target_link_libraries(rtrt ${VENDOR_LIBS} -ldl core)
 target_link_libraries(baker ${VENDOR_LIBS} -ldl core)
+target_link_libraries(bvh_observer ${VENDOR_LIBS} -ldl core)
 
 ##################
 ## ASSETS ########
@@ -90,6 +102,8 @@ if (KERNEL_COMPILER)
         "shaders/*.rahit"
         "shaders/*.rcall"
         "shaders/*.comp"
+        "shaders/*.vert"
+        "shaders/*.frag"
         )
     foreach(GLSL ${GLSL_SOURCE_FILES})
         get_filename_component(FILE_NAME ${GLSL} NAME)
@@ -104,6 +118,7 @@ if (KERNEL_COMPILER)
     add_custom_target(shaders DEPENDS ${SPIRV_BINARY_FILES})
     add_dependencies(rtrt shaders)
     add_dependencies(baker shaders)
+    add_dependencies(bvh_observer shaders)
 else()
     message(CHECK_FAIL "missing")
     message(WARNING "MAKE SURE TO COMPILE SHADERS YOURSELF")

@@ -207,7 +207,7 @@ namespace vlb {
             .setBinding(0)
             .setDescriptorType(vk::DescriptorType::eUniformBuffer)
             .setDescriptorCount(1)
-            .setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR);
+            .setStageFlags(vk::ShaderStageFlagBits::eVertex); // eRaygenKHR
 
         this->descriptor.layout = device.createDescriptorSetLayoutUnique(
                 vk::DescriptorSetLayoutCreateInfo{}
